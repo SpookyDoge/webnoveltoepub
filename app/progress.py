@@ -36,6 +36,15 @@ log = logging.getLogger(__name__)
 #: What a service function is handed to report progress with.
 Emitter = Callable[..., None]
 
+
+class JobError(RuntimeError):
+    """Failure carrying an API-style detail code (e.g. "fetch_error: ...").
+
+    Without it a job would report `RuntimeError: ...`, which the frontend
+    cannot map onto a translated hint - so every failure looked like an
+    "unexpected error" no matter what actually went wrong.
+    """
+
 #: Jobs are dropped this long after finishing. Long enough for a browser that
 #: reconnects or downloads late, short enough that memory does not creep.
 JOB_TTL_SECONDS = 30 * 60
@@ -43,6 +52,51 @@ JOB_TTL_SECONDS = 30 * 60
 #: How long a stream waits before emitting a keep-alive comment. Without
 #: traffic, proxies and browsers happily close an idle connection.
 HEARTBEAT_SECONDS = 15.0
+
+
+class JobControl:
+    """Pause/stop switch, checked between chapters.
+
+    Checked *between* chapters rather than mid-request on purpose: a chapter is
+    either fully downloaded or not started, so stopping never leaves a torn
+    half-chapter in the book. The cost is that a stop lands after the chapter
+    in flight finishes, which is what the UI promises.
+    """
+
+    def __init__(self) -> None:
+        # Set = free to run. Cleared = paused, workers block on it.
+        self._resume = threading.Event()
+        self._resume.set()
+        self._stopped = threading.Event()
+        self.state = "running"
+
+    def pause(self) -> None:
+        if not self._stopped.is_set():
+            self._resume.clear()
+            self.state = "paused"
+
+    def resume(self) -> None:
+        if not self._stopped.is_set():
+            self._resume.set()
+            self.state = "running"
+
+    def stop(self) -> None:
+        self._stopped.set()
+        # Wake anyone parked in a pause, so a stop works while paused too.
+        self._resume.set()
+        self.state = "stopping"
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stopped.is_set()
+
+    def checkpoint(self) -> bool:
+        """Blocks while paused. False means the caller should wrap up now."""
+        if self._stopped.is_set():
+            return False
+        if not self._resume.is_set():
+            self._resume.wait()
+        return not self._stopped.is_set()
 
 
 @dataclass
@@ -59,7 +113,31 @@ class Job:
     error: str | None = None
     #: Append-only. Guarded by `_cond`, which also wakes up the streams.
     history: list[dict] = field(default_factory=list)
+    control: JobControl = field(default_factory=JobControl)
     _cond: threading.Condition = field(default_factory=threading.Condition)
+
+    # -- Control ------------------------------------------------------------
+
+    def pause(self) -> None:
+        self.control.pause()
+        self.emit("status", state=self.state)
+
+    def resume(self) -> None:
+        self.control.resume()
+        self.emit("status", state=self.state)
+
+    def stop(self) -> None:
+        self.control.stop()
+        self.emit("status", state=self.state)
+
+    @property
+    def state(self) -> str:
+        """running | paused | stopping | stopped | done | error."""
+        if self.status == "done" and self.control.stop_requested:
+            return "stopped"
+        if self.status != "running":
+            return self.status
+        return self.control.state
 
     def emit(self, event_type: str, **data: Any) -> None:
         with self._cond:
@@ -117,16 +195,19 @@ class JobRegistry:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def run(self, kind: str, worker: Callable[[Emitter], Any]) -> Job:
-        """Starts `worker` on a thread, handing it an emitter. Returns at once."""
+    def run(self, kind: str, worker: Callable[[Emitter, JobControl], Any]) -> Job:
+        """Starts `worker` on a thread with an emitter and the pause/stop switch."""
         job = self.create(kind)
 
         def runner() -> None:
             try:
-                job.finish(worker(job.emit))
+                job.finish(worker(job.emit, job.control))
+            except JobError as exc:
+                log.warning("Job %s (%s) failed: %s", job.id, kind, exc)
+                job.fail(str(exc))
             except Exception as exc:  # noqa: BLE001 - surfaced to the client
                 log.exception("Job %s (%s) failed", job.id, kind)
-                job.fail(f"{type(exc).__name__}: {exc}")
+                job.fail(f"unknown_error: {type(exc).__name__}: {exc}")
 
         threading.Thread(target=runner, name=f"job-{kind}", daemon=True).start()
         return job

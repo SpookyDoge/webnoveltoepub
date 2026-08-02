@@ -23,7 +23,7 @@ services:
     environment:
       WNE_SAVE_TO_DISK: "true"
       WNE_OUTPUT_DIR: "/app/output"
-      WNE_MAX_CHAPTERS: "300"
+      WNE_MAX_CHAPTERS: "0"
       WNE_REQUEST_DELAY: "0.75"
       WNE_DEFAULT_LANGUAGE: "en"
       WNE_LOG_LEVEL: "INFO"

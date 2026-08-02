@@ -24,6 +24,8 @@
             aria-selected="true" data-i18n="tabs.convert"></button>
     <button type="button" id="tab-library" class="tab" role="tab"
             aria-selected="false" data-i18n="tabs.library"></button>
+    <button type="button" id="tab-settings" class="tab" role="tab"
+            aria-selected="false" data-i18n="tabs.settings"></button>
   </nav>
 
   <main>
@@ -101,6 +103,8 @@
       <div id="convert-progress" class="progress" hidden>
         <progress id="convert-bar" value="0" max="100"></progress>
         <span id="convert-counter" class="badge subtle"></span>
+        <button type="button" id="convert-pause" data-i18n="job.pause"></button>
+        <button type="button" id="convert-stop" data-i18n="job.stop"></button>
       </div>
       <p id="status-message" class="status" hidden></p>
     </section>
@@ -120,10 +124,47 @@
         <div id="library-progress" class="progress" hidden>
           <progress id="library-bar" value="0" max="100"></progress>
           <span id="library-counter" class="badge subtle"></span>
+          <button type="button" id="library-pause" data-i18n="job.pause"></button>
+          <button type="button" id="library-stop" data-i18n="job.stop"></button>
         </div>
         <p id="library-status" class="status" hidden></p>
         <p id="library-empty" class="hint" data-i18n="library.empty" hidden></p>
         <ul id="library-list" class="library-list"></ul>
+      </section>
+    </section>
+
+    <section id="panel-settings" hidden>
+      <section class="card">
+        <h2 data-i18n="settings.title"></h2>
+
+        <label class="checkbox">
+          <input type="checkbox" id="auto-update-enabled">
+          <span data-i18n="settings.auto_update"></span>
+        </label>
+        <p class="hint" data-i18n="settings.auto_update_hint"></p>
+
+        <div id="interval-row" hidden>
+          <label for="auto-update-interval" data-i18n="settings.interval"></label>
+          <input id="auto-update-interval" type="number" min="1" step="1" value="24">
+        </div>
+
+        <label class="checkbox">
+          <input type="checkbox" id="check-on-startup">
+          <span data-i18n="settings.check_on_startup"></span>
+        </label>
+
+        <p id="settings-schedule" class="meta"></p>
+        <p id="exe-note" class="warning" data-i18n="settings.exe_note" hidden></p>
+
+        <button type="button" id="save-settings" class="primary" data-i18n="settings.save"></button>
+        <p id="settings-status" class="status" hidden></p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="settings.history"></h2>
+        <p class="hint" data-i18n="settings.history_hint"></p>
+        <p id="history-empty" class="hint" data-i18n="settings.history_empty" hidden></p>
+        <ul id="run-log" class="library-list"></ul>
       </section>
     </section>
   </main>

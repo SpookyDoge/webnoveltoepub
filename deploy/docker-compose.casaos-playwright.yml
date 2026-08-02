@@ -24,7 +24,7 @@ services:
       WNE_PLAYWRIGHT_ENABLED: "true"
       WNE_SAVE_TO_DISK: "true"
       WNE_OUTPUT_DIR: "/app/output"
-      WNE_MAX_CHAPTERS: "300"
+      WNE_MAX_CHAPTERS: "0"
       # Rendering a page is slower and costlier for the site - so we slow down.
       WNE_REQUEST_DELAY: "1.5"
       WNE_DEFAULT_LANGUAGE: "en"

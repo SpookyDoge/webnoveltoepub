@@ -6,22 +6,18 @@
   "app.title": "webnoveltoepub",
   "app.tagline": "Convert web novels into EPUB files. Self-hosted.",
   "language.label": "Language",
-
   "form.url.label": "Novel URL",
   "form.url.placeholder": "https://www.royalroad.com/fiction/12345/slug",
   "form.url.hint": "Paste the link to the novel's main page (the one with the chapter list).",
   "form.preview": "Load chapters",
   "form.loading": "Loading…",
-
   "supported.title": "Supported sites",
   "supported.heavy": "requires heavy mode",
-
   "novel.author": "Author",
   "novel.chapters": "Chapters",
   "novel.tags": "Tags",
   "novel.source": "Source",
   "novel.cover_alt": "Cover",
-
   "chapters.title": "Chapters",
   "chapters.found": "{count} chapters found",
   "chapters.selected": "{count} selected",
@@ -32,14 +28,11 @@
   "chapters.range_to": "to",
   "chapters.range_apply": "Apply range",
   "chapters.limit_warning": "The server caps a single EPUB at {max} chapters. Extra chapters will be dropped.",
-
   "options.title": "Options",
   "options.include_cover": "Include cover image",
   "options.language": "Book language (EPUB metadata)",
-
   "tabs.convert": "Convert",
   "tabs.library": "Library",
-
   "library.title": "Library",
   "library.hint": "Every conversion is remembered here, so you can pull in new chapters later without downloading the whole novel again.",
   "library.count": "{count} novels",
@@ -58,12 +51,10 @@
   "library.update_failed": "Update failed.",
   "library.no_file": "No EPUB on disk — this entry is history only. Turn on WNE_SAVE_TO_DISK to be able to update it.",
   "library.confirm_delete_file": "Also delete the EPUB file of \"{title}\" from disk?",
-
   "convert.button": "Generate EPUB",
   "convert.building": "Assembling the EPUB…",
   "convert.working": "Generating EPUB — this can take a few minutes for long novels…",
   "convert.done": "Done. Your download should start automatically.",
-
   "error.title": "Something went wrong",
   "error.invalid_url": "That does not look like a valid http(s) URL.",
   "error.unsupported_site": "No parser supports this site yet. See the README for how to add one.",
@@ -73,7 +64,32 @@
   "error.no_selection": "Select at least one chapter.",
   "error.network": "Could not reach the server.",
   "error.unknown": "Unexpected error.",
-
   "footer.source": "Source code",
-  "footer.notice": "Use it for content you are allowed to download, and respect each site's terms of service."
+  "footer.notice": "Use it for content you are allowed to download, and respect each site's terms of service.",
+  "tabs.settings": "Settings",
+  "job.pause": "Pause",
+  "job.resume": "Resume",
+  "job.stop": "Stop",
+  "job.paused": "Paused — nothing is being downloaded.",
+  "job.stopping": "Stopping after the current chapter…",
+  "job.stopped": "Stopped. What was downloaded has been kept.",
+  "settings.title": "Automatic updates",
+  "settings.auto_update": "Check the library for new chapters automatically",
+  "settings.auto_update_hint": "Off by default. When on, the whole library is checked on the interval below and new chapters are appended to the existing EPUBs.",
+  "settings.interval": "Check every (hours)",
+  "settings.check_on_startup": "Also check shortly after the app starts",
+  "settings.save": "Save settings",
+  "settings.saved": "Settings saved.",
+  "settings.save_failed": "Could not save the settings.",
+  "settings.last_run": "Last automatic check: {date}",
+  "settings.next_run": "Next: {date}",
+  "settings.never": "never",
+  "settings.disabled": "Automatic checking is off.",
+  "settings.exe_note": "In the Windows .exe the app only runs while its window is open, so an interval measured in hours will rarely fire. Under Docker or CasaOS the app stays running and the schedule works non-stop.",
+  "settings.history": "Recent automatic checks",
+  "settings.history_hint": "The last 20 runs.",
+  "settings.history_empty": "No automatic check has run yet.",
+  "settings.run_summary": "{checked} checked · {updated} updated · {failed} failed",
+  "error.stopped_empty": "Stopped before any chapter was downloaded, so nothing was saved.",
+  "job.stopped_empty": "Stopped before anything was downloaded."
 }

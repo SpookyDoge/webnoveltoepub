@@ -10,6 +10,8 @@ const state = {
   parsers: [],
   preview: null,
   library: [],
+  settings: null,
+  jobId: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -108,6 +110,22 @@ const el = {
   libraryCounter: document.getElementById("library-counter"),
   updateAll: document.getElementById("update-all"),
   libraryRefresh: document.getElementById("library-refresh"),
+  convertPause: document.getElementById("convert-pause"),
+  convertStop: document.getElementById("convert-stop"),
+  libraryPause: document.getElementById("library-pause"),
+  libraryStop: document.getElementById("library-stop"),
+  tabSettings: document.getElementById("tab-settings"),
+  panelSettings: document.getElementById("panel-settings"),
+  autoUpdateEnabled: document.getElementById("auto-update-enabled"),
+  autoUpdateInterval: document.getElementById("auto-update-interval"),
+  intervalRow: document.getElementById("interval-row"),
+  checkOnStartup: document.getElementById("check-on-startup"),
+  settingsSchedule: document.getElementById("settings-schedule"),
+  settingsStatus: document.getElementById("settings-status"),
+  saveSettings: document.getElementById("save-settings"),
+  exeNote: document.getElementById("exe-note"),
+  runLog: document.getElementById("run-log"),
+  historyEmpty: document.getElementById("history-empty"),
 };
 
 // ---------------------------------------------------------------------------
@@ -121,6 +139,7 @@ function renderDynamic() {
     updateSelectedCount();
   }
   if (state.library.length) renderLibrary();
+  if (state.settings) renderSettings();
 }
 
 function renderParserList() {
@@ -204,12 +223,14 @@ function chapterRow(chapter, checked) {
 
 function renderChapters(chapters, maxChapters) {
   // By default tick only as many as the server would let through anyway.
-  const items = chapters.map((chapter) => chapterRow(chapter, chapter.index <= maxChapters));
+  // 0 (or missing) means the server imposes no cap, so everything gets ticked.
+  const cap = maxChapters > 0 ? maxChapters : Infinity;
+  const items = chapters.map((chapter) => chapterRow(chapter, chapter.index <= cap));
 
   el.chapterList.replaceChildren(...items);
   el.rangeStart.value = 1;
   el.rangeStart.max = chapters.length;
-  el.rangeEnd.value = Math.min(chapters.length, maxChapters);
+  el.rangeEnd.value = Math.min(chapters.length, cap);
   el.rangeEnd.max = chapters.length;
   updateSelectedCount();
 }
@@ -256,6 +277,7 @@ function errorKeyFromDetail(detail) {
     // Must be checked before fetch_error: the backend sends a distinct code
     // for it, and it needs its own hint rather than "site unreachable".
     "playwright_unavailable",
+    "stopped_empty",
     "fetch_error",
   ];
   const match = known.find((key) => String(detail || "").startsWith(key));
@@ -275,10 +297,13 @@ function errorKeyFromDetail(detail) {
  *
  * @param {string} path        endpoint that starts the job
  * @param {object|null} body   JSON payload for it
- * @param {object} handlers    keyed by SSE event type
+ * @param {object} handlers    keyed by SSE event type; `onStart` is special
+ *                             and receives the job id as soon as it is known,
+ *                             which is what the Pause/Stop buttons steer.
  * @returns {Promise<string>}  the job id, once the job has finished
  */
 function runJob(path, body, handlers = {}) {
+  const { onStart, ...eventHandlers } = handlers;
   return new Promise((resolve, reject) => {
     fetch(path, {
       method: "POST",
@@ -293,9 +318,10 @@ function runJob(path, body, handlers = {}) {
         return response.json();
       })
       .then(({ job_id: jobId }) => {
+        if (onStart) onStart(jobId);
         const source = new EventSource(`/api/jobs/${jobId}/events`);
 
-        for (const [type, handler] of Object.entries(handlers)) {
+        for (const [type, handler] of Object.entries(eventHandlers)) {
           source.addEventListener(type, (event) => handler(JSON.parse(event.data)));
         }
 
@@ -379,6 +405,9 @@ async function convert() {
   el.convertButton.disabled = true;
   setStatus("convert.working");
   setProgress(el.convertProgress, el.convertBar, el.convertCounter, 0, selected.length);
+  // A stopped run still produces a download, so "done" must not overwrite the
+  // explanation that the book is deliberately short.
+  let stopped = false;
 
   try {
     const jobId = await runJob(
@@ -390,8 +419,14 @@ async function convert() {
         language: el.bookLanguage.value.trim() || null,
       },
       {
+        onStart: (jobId) => attachControls(el.convertPause, el.convertStop, jobId),
         chapter_downloaded: ({ index, total }) => {
           setProgress(el.convertProgress, el.convertBar, el.convertCounter, index, total);
+        },
+        // Emitted when Stop lands: the book is built from what arrived.
+        stopped: ({ downloaded }) => {
+          stopped = true;
+          setStatus(downloaded ? "job.stopped" : "job.stopped_empty");
         },
         stage: () => setStatus("convert.building"),
       }
@@ -407,13 +442,14 @@ async function convert() {
 
     const blob = await response.blob();
     triggerDownload(blob, fileNameFrom(response) || "novel.epub");
-    setStatus("convert.done");
+    if (!stopped) setStatus("convert.done");
   } catch (error) {
     showJobError(error);
     setStatus(null);
   } finally {
     el.convertButton.disabled = false;
     el.convertProgress.hidden = true;
+    releaseControls(el.convertPause, el.convertStop);
     loadLibrary();
   }
 }
@@ -504,6 +540,7 @@ async function updateEntry(entry, button) {
 
   try {
     await runJob(`/api/library/${entry.id}/update`, null, {
+      onStart: (jobId) => attachControls(el.libraryPause, el.libraryStop, jobId),
       update_started: ({ new_chapters }) => {
         setProgress(el.libraryProgress, el.libraryBar, el.libraryCounter, 0, new_chapters);
       },
@@ -517,6 +554,7 @@ async function updateEntry(entry, button) {
   } finally {
     button.disabled = false;
     el.libraryProgress.hidden = true;
+    releaseControls(el.libraryPause, el.libraryStop);
     loadLibrary();
   }
 }
@@ -529,6 +567,8 @@ async function updateAll() {
   let done = 0;
   try {
     await runJob("/api/library/update-all", null, {
+      // Stop here ends the whole series; novels already refreshed stay saved.
+      onStart: (jobId) => attachControls(el.libraryPause, el.libraryStop, jobId),
       bulk_progress: ({ index, total, title }) => {
         done = index;
         setProgress(el.libraryProgress, el.libraryBar, el.libraryCounter, index, total);
@@ -544,6 +584,7 @@ async function updateAll() {
   } finally {
     el.updateAll.disabled = false;
     el.libraryProgress.hidden = true;
+    releaseControls(el.libraryPause, el.libraryStop);
     loadLibrary();
   }
 }
@@ -587,14 +628,19 @@ function setProgress(container, bar, counter, value, total) {
 }
 
 function selectTab(name) {
-  const isLibrary = name === "library";
-  el.panelConvert.hidden = isLibrary;
-  el.panelLibrary.hidden = !isLibrary;
-  el.tabConvert.classList.toggle("active", !isLibrary);
-  el.tabLibrary.classList.toggle("active", isLibrary);
-  el.tabConvert.setAttribute("aria-selected", String(!isLibrary));
-  el.tabLibrary.setAttribute("aria-selected", String(isLibrary));
-  if (isLibrary) loadLibrary();
+  const panels = {
+    convert: [el.tabConvert, el.panelConvert],
+    library: [el.tabLibrary, el.panelLibrary],
+    settings: [el.tabSettings, el.panelSettings],
+  };
+  for (const [key, [tab, panel]] of Object.entries(panels)) {
+    const active = key === name;
+    panel.hidden = !active;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  }
+  if (name === "library") loadLibrary();
+  if (name === "settings") loadSettings();
 }
 
 function fileNameFrom(response) {
@@ -631,6 +677,138 @@ function setAll(checked) {
   updateSelectedCount();
 }
 
+
+// ---------------------------------------------------------------------------
+// Job control (pause / resume / stop)
+// ---------------------------------------------------------------------------
+
+/** Wires a Pause/Stop pair to whichever job is currently running. */
+function attachControls(pauseButton, stopButton, jobId) {
+  state.jobId = jobId;
+  let paused = false;
+
+  pauseButton.disabled = false;
+  stopButton.disabled = false;
+  pauseButton.textContent = t("job.pause");
+
+  pauseButton.onclick = async () => {
+    paused = !paused;
+    await fetch("/api/jobs/" + jobId + (paused ? "/pause" : "/resume"), { method: "POST" });
+    pauseButton.textContent = t(paused ? "job.resume" : "job.pause");
+    setStatus(paused ? "job.paused" : null);
+  };
+
+  stopButton.onclick = async () => {
+    // Stop is final: disable both so a second click cannot confuse the state.
+    pauseButton.disabled = true;
+    stopButton.disabled = true;
+    setStatus("job.stopping");
+    await fetch("/api/jobs/" + jobId + "/stop", { method: "POST" });
+  };
+}
+
+function releaseControls(pauseButton, stopButton) {
+  state.jobId = null;
+  pauseButton.onclick = null;
+  stopButton.onclick = null;
+  pauseButton.disabled = true;
+  stopButton.disabled = true;
+  pauseButton.textContent = t("job.pause");
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+async function loadSettings() {
+  try {
+    const response = await fetch("/api/settings");
+    state.settings = await response.json();
+    renderSettings();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function renderSettings() {
+  const config = state.settings;
+  if (!config) return;
+
+  el.autoUpdateEnabled.checked = config.auto_update_enabled;
+  el.autoUpdateInterval.value = config.auto_update_interval_hours;
+  el.checkOnStartup.checked = config.check_on_startup;
+  el.intervalRow.hidden = !config.auto_update_enabled;
+  // Only shown in the .exe, where the process dies with its window.
+  el.exeNote.hidden = config.runs_in_background;
+
+  el.settingsSchedule.textContent = config.auto_update_enabled
+    ? [
+        t("settings.last_run", {
+          date: config.last_run_at ? formatDate(config.last_run_at) : t("settings.never"),
+        }),
+        config.next_run_at ? t("settings.next_run", { date: formatDate(config.next_run_at) }) : "",
+      ]
+        .filter(Boolean)
+        .join(" \u00b7 ")
+    : t("settings.disabled");
+
+  renderRunLog(config.recent_runs || []);
+}
+
+function renderRunLog(runs) {
+  el.historyEmpty.hidden = runs.length > 0;
+  el.runLog.replaceChildren(
+    ...runs.map((run) => {
+      const li = document.createElement("li");
+      li.className = "library-item";
+
+      const info = document.createElement("div");
+      info.className = "library-info";
+
+      const when = document.createElement("strong");
+      when.textContent = formatDate(run.finished_at) + " (" + run.trigger + ")";
+
+      const summary = document.createElement("p");
+      summary.className = "meta";
+      summary.textContent = t("settings.run_summary", run);
+
+      info.append(when, summary);
+      li.append(info);
+      return li;
+    })
+  );
+}
+
+async function saveSettings() {
+  el.saveSettings.disabled = true;
+  try {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auto_update_enabled: el.autoUpdateEnabled.checked,
+        // The server enforces the same floor; this keeps the UI honest.
+        auto_update_interval_hours: Math.max(1, Number(el.autoUpdateInterval.value) || 24),
+        check_on_startup: el.checkOnStartup.checked,
+      }),
+    });
+    if (!response.ok) throw new Error("save_failed");
+    state.settings = await response.json();
+    renderSettings();
+    setSettingsStatus("settings.saved");
+  } catch (error) {
+    console.error(error);
+    setSettingsStatus("settings.save_failed");
+  } finally {
+    el.saveSettings.disabled = false;
+  }
+}
+
+function setSettingsStatus(key) {
+  el.settingsStatus.textContent = t(key);
+  el.settingsStatus.hidden = false;
+}
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
@@ -642,6 +820,11 @@ async function init() {
   el.tabLibrary.addEventListener("click", () => selectTab("library"));
   el.updateAll.addEventListener("click", updateAll);
   el.libraryRefresh.addEventListener("click", loadLibrary);
+  el.tabSettings.addEventListener("click", () => selectTab("settings"));
+  el.saveSettings.addEventListener("click", saveSettings);
+  el.autoUpdateEnabled.addEventListener("change", () => {
+    el.intervalRow.hidden = !el.autoUpdateEnabled.checked;
+  });
   el.languageSelect.addEventListener("change", (event) => setLanguage(event.target.value));
   document.getElementById("select-all").addEventListener("click", () => setAll(true));
   document.getElementById("select-none").addEventListener("click", () => setAll(false));

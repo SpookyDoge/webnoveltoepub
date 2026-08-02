@@ -130,3 +130,44 @@ class LibraryUpdateAllResponse(BaseModel):
     results: list[LibraryUpdateResult]
     updated: int
     failed: int
+
+
+# --------------------------------------------------------------------------
+# Automatic updates
+# --------------------------------------------------------------------------
+
+#: Anything below an hour hammers source sites for nothing: web novels publish
+#: a few chapters a day at most, and every check walks the whole library.
+MIN_INTERVAL_HOURS = 1
+
+
+class AppSettings(BaseModel):
+    """User-facing configuration that persists across restarts."""
+
+    #: Off by default - nothing reaches out to the internet unless asked.
+    auto_update_enabled: bool = False
+    auto_update_interval_hours: int = Field(default=24, ge=MIN_INTERVAL_HOURS)
+    #: Run one check shortly after the app starts, on top of the interval.
+    check_on_startup: bool = False
+
+
+class AutoUpdateRun(BaseModel):
+    """One automatic pass over the library, for the history log."""
+
+    started_at: str
+    finished_at: str
+    #: "startup" | "interval" | "manual"
+    trigger: str
+    checked: int = 0
+    updated: int = 0
+    failed: int = 0
+
+
+class SettingsResponse(AppSettings):
+    """Settings plus the scheduler's view of them."""
+
+    last_run_at: str | None = None
+    next_run_at: str | None = None
+    #: False in the .exe build, where the app only runs while its window is open.
+    runs_in_background: bool = True
+    recent_runs: list[AutoUpdateRun] = Field(default_factory=list)

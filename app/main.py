@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+import sys
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from urllib.parse import quote, urlparse
 
@@ -16,18 +17,22 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__, i18n
 from .config import WEB_DIR, get_settings
 from .fetcher import FetchError, PlaywrightUnavailableError
-from .library import Library
+from .library import Library, SettingsStore
 from .models import (
+    AppSettings,
     ConvertRequest,
     LibraryEntry,
     ParserInfo,
     PreviewRequest,
     PreviewResponse,
+    SettingsResponse,
 )
 from .parsers import ParserError, all_parsers, discover
-from .progress import registry
+from .progress import JobError, registry
+from .scheduler import scheduler
 from .service import (
     ConversionResult,
+    StoppedBeforeStartError,
     UnsupportedSiteError,
     convert,
     preview,
@@ -51,7 +56,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         len(all_parsers()),
         ", ".join(p.name for p in all_parsers()),
     )
-    yield
+    scheduler.start()
+    try:
+        yield
+    finally:
+        await scheduler.stop()
 
 
 app = FastAPI(
@@ -60,6 +69,38 @@ app = FastAPI(
     description="Self-hosted web novel to EPUB converter",
     lifespan=lifespan,
 )
+
+
+def error_detail(exc: Exception) -> str:
+    """Turns an exception into the detail code the frontend translates.
+
+    The single source of truth for both routes: the synchronous ones raise it
+    as an HTTP detail, the job ones hand it to the client over SSE. Order
+    matters - PlaywrightUnavailableError is a FetchError.
+    """
+    if isinstance(exc, UnsupportedSiteError):
+        return "unsupported_site"
+    if isinstance(exc, StoppedBeforeStartError):
+        return "stopped_empty"
+    if isinstance(exc, ParserError):
+        return f"parser_error: {exc}"
+    if isinstance(exc, PlaywrightUnavailableError):
+        return f"playwright_unavailable: {exc}"
+    if isinstance(exc, FetchError):
+        return f"fetch_error: {exc}"
+    return f"unknown_error: {type(exc).__name__}: {exc}"
+
+
+def _job_worker(work: Callable[..., object]) -> Callable[..., object]:
+    """Wraps a job body so failures arrive as codes, not raw exception text."""
+
+    def runner(emit: object, control: object) -> object:
+        try:
+            return work(emit, control)
+        except Exception as exc:
+            raise JobError(error_detail(exc)) from exc
+
+    return runner
 
 
 def _validate_url(url: str) -> str:
@@ -185,7 +226,7 @@ def _epub_response(result: ConversionResult) -> Response:
 async def start_preview_job(request: PreviewRequest) -> dict[str, str]:
     """Same work as /api/preview, but reporting chapters as they are found."""
     url = _validate_url(request.url)
-    job = registry.run("preview", lambda emit: preview(url, settings, emit))
+    job = registry.run("preview", _job_worker(lambda emit, control: preview(url, settings, emit)))
     return {"job_id": job.id}
 
 
@@ -193,7 +234,10 @@ async def start_preview_job(request: PreviewRequest) -> dict[str, str]:
 async def start_convert_job(request: ConvertRequest) -> dict[str, str]:
     """Same work as /api/convert; the EPUB is collected from /result after."""
     request.url = _validate_url(request.url)
-    job = registry.run("convert", lambda emit: convert(request, settings, emit))
+    job = registry.run(
+        "convert",
+        _job_worker(lambda emit, control: convert(request, settings, emit, control)),
+    )
     return {"job_id": job.id}
 
 
@@ -259,7 +303,10 @@ async def list_library() -> list[LibraryEntry]:
 
 @app.post("/api/library/update-all")
 async def start_update_all_job() -> dict[str, str]:
-    job = registry.run("library_update_all", lambda emit: update_all(settings, emit))
+    job = registry.run(
+        "library_update_all",
+        _job_worker(lambda emit, control: update_all(settings, emit, control)),
+    )
     return {"job_id": job.id}
 
 
@@ -268,7 +315,8 @@ async def start_update_job(entry_id: str) -> dict[str, str]:
     if await asyncio.to_thread(Library(settings).get, entry_id) is None:
         raise HTTPException(status_code=404, detail="unknown_entry")
     job = registry.run(
-        "library_update", lambda emit: update_entry(entry_id, settings, emit)
+        "library_update",
+        _job_worker(lambda emit, control: update_entry(entry_id, settings, emit, control)),
     )
     return {"job_id": job.id}
 
@@ -283,8 +331,95 @@ async def delete_library_entry(entry_id: str, delete_file: bool = False) -> Libr
     return removed
 
 
+class RevalidatingStaticFiles(StaticFiles):
+    """Serves the frontend with revalidation instead of heuristic caching.
+
+    With no Cache-Control header a browser is free to invent its own freshness
+    window and keep running an old app.js long after an update - which looks
+    exactly like a broken UI. ETags are already sent, so "no-cache" costs one
+    conditional request and gets a 304 whenever nothing actually changed.
+    """
+
+    def file_response(self, *args: object, **kwargs: object) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
+# --------------------------------------------------------------------------
+# Job control (pause / resume / stop)
+# --------------------------------------------------------------------------
+
+
+def _job_or_404(job_id: str):
+    job = registry.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown_job")
+    return job
+
+
+@app.post("/api/jobs/{job_id}/pause")
+async def pause_job(job_id: str) -> dict[str, str]:
+    job = _job_or_404(job_id)
+    job.pause()
+    return {"state": job.state}
+
+
+@app.post("/api/jobs/{job_id}/resume")
+async def resume_job(job_id: str) -> dict[str, str]:
+    job = _job_or_404(job_id)
+    job.resume()
+    return {"state": job.state}
+
+
+@app.post("/api/jobs/{job_id}/stop")
+async def stop_job(job_id: str) -> dict[str, str]:
+    """Wraps the job up after the chapter in flight; keeps what was downloaded."""
+    job = _job_or_404(job_id)
+    job.stop()
+    return {"state": job.state}
+
+
+@app.get("/api/jobs/{job_id}")
+async def job_status(job_id: str) -> dict[str, str]:
+    job = _job_or_404(job_id)
+    return {"id": job.id, "kind": job.kind, "state": job.state}
+
+
+# --------------------------------------------------------------------------
+# Settings
+# --------------------------------------------------------------------------
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_app_settings() -> SettingsResponse:
+    return await asyncio.to_thread(_settings_response)
+
+
+@app.put("/api/settings", response_model=SettingsResponse)
+async def put_app_settings(update: AppSettings) -> SettingsResponse:
+    await asyncio.to_thread(SettingsStore(settings).save, update)
+    # The scheduler re-plans on the spot - no restart to pick this up.
+    scheduler.nudge()
+    return await asyncio.to_thread(_settings_response)
+
+
+def _settings_response() -> SettingsResponse:
+    store = SettingsStore(settings)
+    stored = store.load()
+    return SettingsResponse(
+        **stored.model_dump(),
+        last_run_at=store.last_run_at(),
+        next_run_at=scheduler.next_run_at,
+        # In the .exe the process only lives while its window is open, so an
+        # interval measured in hours mostly will not fire.
+        runs_in_background=not getattr(sys, "frozen", False),
+        recent_runs=list(reversed(store.runs())),
+    )
+
+
 # Mount the frontend last - the /api/* routes are already registered and win.
 if WEB_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
+    app.mount("/", RevalidatingStaticFiles(directory=str(WEB_DIR), html=True), name="web")
 else:  # pragma: no cover
     log.warning("Frontend directory does not exist: %s", WEB_DIR)

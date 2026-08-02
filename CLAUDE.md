@@ -216,6 +216,65 @@ Uwagi:
 - Zadania żyją w pamięci (`JOB_TTL_SECONDS`), bo trzymają gotowy EPUB, który ma
   sens tylko dla przeglądarki, która o niego poprosiła.
 
+## Scheduler automatycznych aktualizacji
+
+`app/scheduler.py` — jedno zadanie asyncio startowane z `lifespan` FastAPI.
+
+**Dlaczego gołe asyncio, nie APScheduler:** jest dokładnie jedno zadanie
+okresowe, aplikacja i tak ma pętlę zdarzeń, a ciało pętli tylko oddaje robotę
+do wątku. Zależność dołożyłaby wagi instalacji (i kolejną rzecz do wrzucenia
+do `.exe`) w zamian za jakieś dwadzieścia linijek.
+
+- Pętla budzi się co `TICK_SECONDS` (60 s), a nie śpi przez cały interwał —
+  dzięki temu **zmiana ustawień działa bez restartu**. `PUT /api/settings`
+  dodatkowo woła `scheduler.nudge()`, więc reakcja jest natychmiastowa.
+- Sprawdzanie przy starcie (`check_on_startup`) odpala się po
+  `STARTUP_DELAY_SECONDS` (30 s), niezależnie od interwału.
+- **Reużywa `service.update_all`** — scheduler nie ma własnej kopii logiki
+  aktualizacji.
+- **Włączenie automatu nie odpala sprawdzenia od razu.** Zapisuje się wpis
+  `baseline`, a pierwszy realny przebieg następuje interwał później — inaczej
+  zaznaczenie checkboxa uderzałoby naraz we wszystkie serwisy z biblioteki.
+- `_run_once` **nigdy nie rzuca**: nieudane sprawdzenie ląduje w logu
+  przebiegów, a pętla żyje dalej.
+
+**Pułapka:** `asyncio.Event` tworzy się dopiero w `start()`, nie w
+`__init__`. Obiekt schedulera powstaje przy imporcie modułu — długo przed
+istnieniem pętli zdarzeń — a Event wiąże się z pierwszą, która go awaituje.
+Tworzenie go w konstruktorze wywalało wszystkie testy z `TestClient`
+(„bound to a different event loop").
+
+Ustawienia i log przebiegów leżą w `settings.json` **obok** `library.json`:
+zapis checkboxa nie przepisuje wtedy wszystkich powieści, a uszkodzona
+biblioteka nie kosztuje użytkownika konfiguracji (i odwrotnie).
+
+## Pauza i zatrzymanie zadania
+
+`JobControl` w `app/progress.py`; każdy `Job` ma własną instancję, a
+`registry.run` podaje ją workerowi obok emitera.
+
+**Stan sprawdzany jest MIĘDZY rozdziałami**, nigdy w środku żądania — rozdział
+jest albo pobrany w całości, albo wcale, więc stop nie zostawia urwanego
+tekstu. Ceną jest to, że przerwanie ląduje po rozdziale będącym w locie, i
+dokładnie to obiecuje UI.
+
+Stany: `running` → `paused` → `running` → `stopping` → `stopped` (albo `done`
+/ `error`). Front dostaje je eventem `status`, a przyciski steruje przez
+`POST /api/jobs/{id}/{pause,resume,stop}`.
+
+Rzeczy, na które trzeba uważać:
+- **Stop musi obudzić wstrzymanego workera** — `JobControl.stop()` ustawia
+  `_resume`, inaczej Stop na spauzowanym zadaniu wisiałby w nieskończoność.
+- **Po stopie liczba rozdziałów w bibliotece to pozycja ostatniego pobranego**
+  (`chapter.index`), a nie liczba zapisanych. Po przerwaniu na 40. z 290
+  wpisuje się 40, więc zwykły „Update" wznawia od 41 — czyli od tego, czego
+  oczekuje `update_entry`.
+- **Stop przed pierwszym rozdziałem** rzuca `StoppedBeforeStartError` →
+  kod `stopped_empty`. Bez osobnego typu UI obwiniał parser o stronę, której
+  nawet nie zdążył przeczytać.
+- `update_all` sprawdza stan także **między powieściami**, więc Stop kończy
+  całą serię — ale każda pozycja domknięta wcześniej jest już zapisana.
+
 ## Packaging `.exe` (Windows)
 
 `build/pyinstaller.spec` pakuje `app/` + `web/` w jeden plik (~21 MB).
@@ -267,10 +326,12 @@ Ta sama luka dotyczy `deploy/*.yml`, które wskazują na nieistniejący
 
 ## Roadmapa i ograniczenia
 
-1. **Kolejka zadań w tle — priorytet #1.** Konwersja trzyma otwarty jeden
-   request HTTP przez cały czas pobierania (300 rozdziałów × 0.75 s ≈ kilka
-   minut). To realny timeout na reverse proxy. Dotyczy też `/api/preview` przy
-   powieściach z dużą liczbą stron listy (4400 rozdziałów = 111 żądań).
+1. **Limit rozdziałów jest domyślnie wyłączony** (`WNE_MAX_CHAPTERS=0`).
+   Konwersja nadal trzyma otwarty jeden request HTTP przez cały czas pobierania,
+   ale progres leci przez SSE, więc nie wygląda to na zawieszenie. Przy bardzo
+   długich powieściach (4400 rozdziałów × 0.75 s ≈ godzina) nadal realne jest
+   ubicie żądania przez reverse proxy — docelowo warto oderwać pobieranie od
+   requestu i zostawić samo SSE.
 2. Obrazki wewnątrz rozdziałów są **wycinane** (okładki działają).
 3. Cache rozdziałów między uruchomieniami.
 4. Tłumaczenie treści rozdziałów — osobna, późniejsza faza.
@@ -292,6 +353,11 @@ Rzeczy, które **już raz po cichu zepsuły wynik**. Nie cofać.
 - **Ten sam `ul.ul-list5` bywa w kilku blokach.** Na FreeWebNovel blok
   „najnowsze rozdziały" wstrzykiwał rozdział #290 na początek listy. Zawężać się
   najpierw do kontenera (`#idData`), potem szukać linków.
+- **Statyki bez `Cache-Control` = użytkownik siedzi na starym froncie.**
+  Bez tego nagłówka przeglądarka sama wymyśla okres świeżości i po
+  aktualizacji potrafi dalej serwować stary `app.js` — wygląda to jak zepsute
+  UI (raz już tak było: „przycisk biblioteki nie działa"). `RevalidatingStaticFiles`
+  w `main.py` wymusza `no-cache`; ETagi i tak zwracają 304, gdy nic się nie zmieniło.
 - **Konsola Git Bash na Windowsie pokazuje `?` zamiast UTF-8.** Zanim uznasz to
   za błąd kodowania, sprawdź surowe bajty w pliku — dwa razy okazało się
   artefaktem terminala.

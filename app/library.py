@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import Settings, get_settings
-from .models import LibraryEntry
+from .models import AppSettings, AutoUpdateRun, LibraryEntry
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +44,44 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def read_json(path: Path, what: str) -> dict:
+    """Reads a JSON file, treating any problem as "not there yet".
+
+    A corrupt file must not take the app down - the user would lose the
+    ability to convert anything at all over a bad settings row.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("Could not read the %s at %s: %s", what, path, exc)
+        return {}
+
+
+def write_json(path: Path, payload: dict) -> None:
+    """Atomic write: a crash mid-save must not leave a truncated file."""
+    with _WRITE_LOCK:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Written in the target's own directory: os.replace is only
+            # atomic within a single filesystem.
+            fd, tmp_name = tempfile.mkstemp(
+                dir=path.parent, prefix=f".{path.stem}-", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+                    json.dump(payload, tmp, ensure_ascii=False, indent=2)
+                os.replace(tmp_name, path)
+            except BaseException:
+                Path(tmp_name).unlink(missing_ok=True)
+                raise
+        except OSError as exc:
+            # Losing this is annoying; losing the conversion the user just
+            # waited minutes for is worse.
+            log.warning("Could not write %s: %s", path, exc)
+
+
 class Library:
     """Reads and writes the library file. Cheap to construct; no state cached.
 
@@ -58,16 +96,7 @@ class Library:
     # -- Reading ------------------------------------------------------------
 
     def load(self) -> list[LibraryEntry]:
-        if not self.path.is_file():
-            return []
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            # A corrupt library must not take the whole app down - the user
-            # would lose access to converting anything at all.
-            log.warning("Could not read the library at %s: %s", self.path, exc)
-            return []
-
+        raw = read_json(self.path, "library")
         entries: list[LibraryEntry] = []
         for item in raw.get("entries", []):
             try:
@@ -82,29 +111,10 @@ class Library:
     # -- Writing ------------------------------------------------------------
 
     def save(self, entries: list[LibraryEntry]) -> None:
-        payload = {
-            "version": 1,
-            "entries": [entry.model_dump() for entry in entries],
-        }
-        with _WRITE_LOCK:
-            try:
-                self.path.parent.mkdir(parents=True, exist_ok=True)
-                # Written in the target's own directory: os.replace is only
-                # atomic within a single filesystem.
-                fd, tmp_name = tempfile.mkstemp(
-                    dir=self.path.parent, prefix=".library-", suffix=".tmp"
-                )
-                try:
-                    with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-                        json.dump(payload, tmp, ensure_ascii=False, indent=2)
-                    os.replace(tmp_name, self.path)
-                except BaseException:
-                    Path(tmp_name).unlink(missing_ok=True)
-                    raise
-            except OSError as exc:
-                # Losing the library is annoying; losing the conversion the
-                # user just waited minutes for is worse.
-                log.warning("Could not write the library at %s: %s", self.path, exc)
+        write_json(
+            self.path,
+            {"version": 1, "entries": [entry.model_dump() for entry in entries]},
+        )
 
     def upsert(self, entry: LibraryEntry) -> LibraryEntry:
         """Adds the novel or refreshes the existing row, keeping created_at."""
@@ -167,3 +177,58 @@ class Library:
             created_at=timestamp,
             updated_at=timestamp,
         )
+
+
+class SettingsStore:
+    """Persisted app settings plus the history of automatic update runs.
+
+    A separate file from the library on purpose: saving a checkbox should not
+    rewrite every novel's row, and a corrupt library must not cost the user
+    their configuration (or the other way round).
+    """
+
+    #: How many past runs to keep. Enough to see a pattern, small enough that
+    #: the file stays readable by hand.
+    MAX_RUNS = 20
+
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
+        self.path: Path = self.settings.resolved_library_path().with_name("settings.json")
+
+    def load(self) -> AppSettings:
+        raw = read_json(self.path, "settings").get("settings", {})
+        try:
+            return AppSettings(**raw)
+        except Exception as exc:  # noqa: BLE001 - fall back to defaults, never crash
+            log.warning("Malformed settings, using defaults: %s", exc)
+            return AppSettings()
+
+    def save(self, app_settings: AppSettings) -> AppSettings:
+        payload = read_json(self.path, "settings")
+        payload["version"] = 1
+        payload["settings"] = app_settings.model_dump()
+        write_json(self.path, payload)
+        return app_settings
+
+    # -- Run history --------------------------------------------------------
+
+    def runs(self) -> list[AutoUpdateRun]:
+        raw = read_json(self.path, "settings").get("runs", [])
+        history: list[AutoUpdateRun] = []
+        for item in raw:
+            try:
+                history.append(AutoUpdateRun(**item))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Skipping malformed run entry: %s", exc)
+        return history
+
+    def record_run(self, run: AutoUpdateRun) -> None:
+        payload = read_json(self.path, "settings")
+        history = [*payload.get("runs", []), run.model_dump()]
+        payload["version"] = 1
+        payload["runs"] = history[-self.MAX_RUNS :]
+        write_json(self.path, payload)
+
+    def last_run_at(self) -> str | None:
+        history = self.runs()
+        return history[-1].finished_at if history else None

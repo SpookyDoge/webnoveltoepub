@@ -66,6 +66,32 @@ Zakładamy, że listy rozdziałów rosną na końcu — tak działają web novel
 serwis przestawi albo usunie rozdziały, aktualizacja zgłosi, że lista się
 przesunęła, zamiast po cichu dopisać nie te.
 
+## Automatyczne sprawdzanie
+
+**Domyślnie wyłączone** — nic nie łączy się z internetem, dopóki sam o to nie
+poprosisz. Włączysz je w zakładce **Ustawienia**, gdzie wybierzesz, co ile
+sprawdzać całą bibliotekę (najczęściej co godzinę, bo web novele publikują co
+najwyżej kilka rozdziałów dziennie) oraz czy sprawdzać krótko po starcie
+aplikacji. Ta sama zakładka pokazuje, kiedy było ostatnie sprawdzenie, kiedy
+wypada następne, i log 20 ostatnich przebiegów.
+
+Zmiany działają od razu — bez restartu.
+
+> Pod Dockerem i CasaOS aplikacja chodzi non-stop, więc harmonogram naprawdę
+> działa w tle. W wersji `.exe` dla Windows aplikacja żyje tylko wtedy, gdy jej
+> okno jest otwarte, więc odstęp liczony w godzinach rzadko zdąży zadziałać —
+> zakładka Ustawienia też o tym informuje.
+
+## Przerywanie długiej konwersji
+
+Długą konwersję można wstrzymać albo zatrzymać przy pasku postępu i **nic z
+tego, co już pobrane, nie przepada**. Zatrzymanie kończy rozdział będący w
+locie, po czym składa poprawny — choć krótszy — EPUB z tego, co dotarło, i
+zapisuje go w bibliotece z właściwą liczbą rozdziałów. Późniejszy **Update**
+podejmuje dokładnie od tego miejsca. Pauza po prostu czeka, a Wznów kontynuuje
+bez pobierania czegokolwiek ponownie. Przy **Aktualizuj wszystkie** Stop kończy
+całą serię, zachowując każdą już odświeżoną powieść.
+
 ## Konfiguracja
 
 Wszystko jest opcjonalne. Skopiuj `.env.example` do `.env` albo ustaw zmienne
@@ -75,7 +101,7 @@ w swoim pliku compose.
 | ------- | --------- | --------- |
 | `WNE_PORT` | `8000` | port hosta dla interfejsu webowego |
 | `WNE_DEFAULT_LANGUAGE` | `en` | język UI, gdy nie da się dopasować języka przeglądarki (`en`, `pl`) |
-| `WNE_MAX_CHAPTERS` | `300` | twardy limit rozdziałów w jednym EPUB-ie |
+| `WNE_MAX_CHAPTERS` | `0` | limit rozdziałów w jednym EPUB-ie; `0` = bez limitu |
 | `WNE_REQUEST_DELAY` | `0.75` | odstęp w sekundach między żądaniami HTTP — nie zaniżaj bez potrzeby |
 | `WNE_SAVE_TO_DISK` | `false` | zapisuj każdy wygenerowany EPUB także w `WNE_OUTPUT_DIR` |
 

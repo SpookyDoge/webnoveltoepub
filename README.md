@@ -64,6 +64,32 @@ Chapter lists are assumed to grow at the end, which is how web novels work. If a
 site reorders or removes chapters, the update says the list shifted rather than
 quietly appending the wrong ones.
 
+## Automatic updates
+
+**Off by default** — nothing reaches out to the internet unless you ask it to.
+Turn it on under **Settings**, where you can choose how often the whole library
+is checked (hourly at the fastest, since web novels publish a few chapters a day
+at most) and whether to run a check shortly after the app starts. The tab also
+shows when the last automatic check ran, when the next one is due, and a log of
+the last 20 runs.
+
+Changes take effect immediately — no restart.
+
+> Under Docker or CasaOS the app keeps running, so the schedule genuinely fires
+> in the background. In the Windows `.exe` the app only lives while its window is
+> open, so an interval measured in hours will rarely come round; the Settings tab
+> says so too.
+
+## Stopping a long conversion
+
+Long conversions can be paused or stopped from the progress bar, and **nothing
+already downloaded is thrown away**. Stopping finishes the chapter in flight,
+then builds a valid — if shorter — EPUB from what arrived and records it in the
+library with the right chapter count. A later **Update** picks up exactly where
+it left off. Pause simply waits, and Resume carries on without re-downloading
+anything. During **Update all**, Stop ends the whole run while keeping every
+novel already refreshed.
+
 ## Configuration
 
 Everything is optional. Copy `.env.example` to `.env`, or set the variables in
@@ -73,7 +99,7 @@ your compose file.
 | -------- | ------- | ------- |
 | `WNE_PORT` | `8000` | host port for the web UI |
 | `WNE_DEFAULT_LANGUAGE` | `en` | UI language when the browser's language can't be matched (`en`, `pl`) |
-| `WNE_MAX_CHAPTERS` | `300` | hard cap on chapters per EPUB |
+| `WNE_MAX_CHAPTERS` | `0` | cap on chapters per EPUB; `0` means no limit |
 | `WNE_REQUEST_DELAY` | `0.75` | seconds between HTTP requests — please keep this polite |
 | `WNE_SAVE_TO_DISK` | `false` | also save every generated EPUB to `WNE_OUTPUT_DIR` |
 

@@ -26,7 +26,7 @@ from .models import (
     PreviewResponse,
 )
 from .parsers import BaseParser, ParserError, get_parser_class
-from .progress import Emitter
+from .progress import Emitter, JobControl
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +37,14 @@ class UnsupportedSiteError(RuntimeError):
 
 class LibraryEntryNotFoundError(RuntimeError):
     """No library entry with that id."""
+
+
+class StoppedBeforeStartError(RuntimeError):
+    """Stopped before a single chapter arrived, so there is no book to save.
+
+    Its own type so the UI can say exactly that, instead of blaming the parser
+    for a page it never got round to reading.
+    """
 
 
 def _noop(*args: object, **kwargs: object) -> None:
@@ -106,6 +114,7 @@ def convert(
     request: ConvertRequest,
     settings: Settings | None = None,
     emit: Emitter | None = None,
+    control: JobControl | None = None,
 ) -> ConversionResult:
     settings = settings or get_settings()
     emit = emit or _noop
@@ -123,14 +132,25 @@ def convert(
         if not selected:
             raise ParserError("The chapter selection is empty")
 
-        if len(selected) > settings.max_chapters:
+        # 0 means unlimited; only a positive cap truncates.
+        if 0 < settings.max_chapters < len(selected):
             warnings.append(
                 f"Limited to {settings.max_chapters} chapters "
                 f"(out of {len(selected)} selected)"
             )
             selected = selected[: settings.max_chapters]
 
-        contents = _download_chapters(parser, selected, warnings, emit)
+        contents = _download_chapters(parser, selected, warnings, emit, control)
+        if not contents:
+            raise StoppedBeforeStartError("Stopped before any chapter was downloaded")
+
+        # A stop leaves fewer chapters than were asked for; the book is built
+        # from what actually arrived so nothing already downloaded is lost.
+        included = selected[: len(contents)]
+        if len(included) < len(selected):
+            warnings.append(
+                f"Stopped after {len(included)} of {len(selected)} chapters"
+            )
 
         emit("stage", stage="building")
         cover = parser.get_cover_image(metadata) if request.include_cover else None
@@ -144,7 +164,7 @@ def convert(
     record_in_library(
         metadata=metadata,
         parser_name=parser.name,
-        chapters=selected,
+        chapters=included,
         file_path=saved_path,
         settings=settings,
     )
@@ -164,12 +184,28 @@ def _download_chapters(
     selected: list[ChapterRef],
     warnings: list[str],
     emit: Emitter,
+    control: JobControl | None = None,
 ) -> list[ChapterContent]:
-    """Fetches chapter bodies, reporting progress and tolerating failures."""
+    """Fetches chapter bodies, reporting progress and tolerating failures.
+
+    Returns however many were fetched: a stop request ends the loop early and
+    the caller builds a shorter - but complete and valid - book out of it.
+    """
     total = len(selected)
     contents: list[ChapterContent] = []
 
     for position, chapter in enumerate(selected, start=1):
+        if control is not None:
+            was_paused = control.state == "paused"
+            if was_paused:
+                emit("status", state="paused")
+            # Blocks here while paused; False once a stop is requested.
+            if not control.checkpoint():
+                emit("stopped", downloaded=len(contents), requested=total)
+                break
+            if was_paused:
+                emit("status", state="running")
+
         try:
             contents.append(parser.get_chapter_content(chapter))
             failed = False
@@ -260,6 +296,10 @@ def record_in_library(
     having as history, it just cannot be topped up later - the update endpoint
     says so explicitly rather than silently rebuilding everything.
     """
+    # The last chapter's 1-based position in the source list, not how many were
+    # written. After a stop at chapter 40 of 290 that records 40, so a later
+    # Update resumes at 41 - which is exactly what update_entry expects.
+    last = chapters[-1] if chapters else None
     entry = Library.build_entry(
         source_url=metadata.source_url,
         parser_name=parser_name,
@@ -268,8 +308,8 @@ def record_in_library(
         language=metadata.language,
         cover_url=metadata.cover_url,
         file_path=file_path,
-        chapter_count=len(chapters),
-        last_chapter_url=chapters[-1].url if chapters else None,
+        chapter_count=last.index if last else 0,
+        last_chapter_url=last.url if last else None,
     )
     return Library(settings).upsert(entry)
 
@@ -278,6 +318,7 @@ def update_entry(
     entry_key: str,
     settings: Settings | None = None,
     emit: Emitter | None = None,
+    control: JobControl | None = None,
 ) -> LibraryUpdateResult:
     """Fetches only the chapters the stored EPUB does not have yet."""
     settings = settings or get_settings()
@@ -335,17 +376,29 @@ def update_entry(
             return result
 
         emit("update_started", id=entry.id, title=entry.title, new_chapters=len(new_chapters))
-        contents = _download_chapters(parser, new_chapters, warnings, emit)
-        payload = append_chapters(Path(entry.file_path), contents)
+        contents = _download_chapters(parser, new_chapters, warnings, emit, control)
+        # A stop can land before anything was appended - leave the file alone.
+        added = new_chapters[: len(contents)]
+        payload = append_chapters(Path(entry.file_path), contents) if contents else None
     finally:
         fetcher.close()
+
+    if payload is None:
+        result = LibraryUpdateResult(
+            id=entry.id,
+            title=entry.title,
+            status="stopped",
+            chapter_count=entry.chapter_count,
+        )
+        emit("entry_finished", **result.model_dump())
+        return result
 
     Path(entry.file_path).write_bytes(payload)
 
     updated = entry.model_copy(
         update={
-            "chapter_count": entry.chapter_count + len(new_chapters),
-            "last_chapter_url": new_chapters[-1].url,
+            "chapter_count": added[-1].index,
+            "last_chapter_url": added[-1].url,
             "updated_at": utc_now(),
         }
     )
@@ -354,8 +407,8 @@ def update_entry(
     result = LibraryUpdateResult(
         id=entry.id,
         title=entry.title,
-        status="updated",
-        added_chapters=len(new_chapters),
+        status="stopped" if len(added) < len(new_chapters) else "updated",
+        added_chapters=len(added),
         chapter_count=updated.chapter_count,
         detail="; ".join(warnings) or None,
     )
@@ -366,8 +419,13 @@ def update_entry(
 def update_all(
     settings: Settings | None = None,
     emit: Emitter | None = None,
+    control: JobControl | None = None,
 ) -> LibraryUpdateAllResponse:
-    """Walks the whole library, pausing between novels."""
+    """Walks the whole library, pausing between novels.
+
+    A stop ends the whole series, not just the novel in flight - but every
+    entry finished before that point is already written to disk and recorded.
+    """
     settings = settings or get_settings()
     emit = emit or _noop
     entries = Library(settings).load()
@@ -376,6 +434,10 @@ def update_all(
     results: list[LibraryUpdateResult] = []
 
     for position, entry in enumerate(entries, start=1):
+        if control is not None and not control.checkpoint():
+            emit("stopped", completed=len(results), total=len(entries))
+            break
+
         if position > 1 and settings.library_update_delay > 0:
             # Each novel gets a fresh Fetcher, so its per-host throttle starts
             # from zero - without this the library would burst on every site.
@@ -383,7 +445,7 @@ def update_all(
 
         emit("bulk_progress", index=position, total=len(entries), title=entry.title)
         try:
-            results.append(update_entry(entry.id, settings, emit))
+            results.append(update_entry(entry.id, settings, emit, control))
         except Exception as exc:  # noqa: BLE001 - one novel must not stop the rest
             log.warning("Updating %s failed: %s", entry.source_url, exc)
             results.append(

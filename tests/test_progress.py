@@ -44,7 +44,7 @@ def test_sse_data_is_not_ascii_escaped():
 
 def test_run_executes_the_worker_and_stores_its_result():
     registry = JobRegistry()
-    job = registry.run("test", lambda emit: "the result")
+    job = registry.run("test", lambda emit, control: "the result")
 
     for _ in range(50):
         if job.finished:
@@ -57,7 +57,7 @@ def test_run_executes_the_worker_and_stores_its_result():
 
 def test_a_failing_worker_becomes_an_error_event():
     registry = JobRegistry()
-    job = registry.run("test", lambda emit: 1 / 0)
+    job = registry.run("test", lambda emit, control: 1 / 0)
 
     events = _events(list(registry.stream(job)))
 
@@ -277,3 +277,43 @@ def test_invalid_url_is_rejected_before_a_job_starts():
     with TestClient(app) as client:
         response = client.post("/api/jobs/preview", json={"url": "file:///etc/passwd"})
     assert response.status_code == 400
+
+
+# -- Failure codes ----------------------------------------------------------
+
+
+def test_error_detail_maps_each_exception_to_a_frontend_code():
+    from app.fetcher import FetchError, PlaywrightUnavailableError
+    from app.main import error_detail
+    from app.parsers import ParserError
+    from app.service import UnsupportedSiteError
+
+    assert error_detail(UnsupportedSiteError("x")) == "unsupported_site"
+    assert error_detail(ParserError("bad layout")).startswith("parser_error:")
+    assert error_detail(FetchError("timeout")).startswith("fetch_error:")
+    # Subclass of FetchError - must not be swallowed by the broader branch.
+    assert error_detail(PlaywrightUnavailableError("no chromium")).startswith(
+        "playwright_unavailable:"
+    )
+    assert error_detail(ValueError("odd")).startswith("unknown_error:")
+
+
+def test_a_failed_job_reports_a_code_the_frontend_can_translate(monkeypatch):
+    """Regression: raw exception text showed up as a generic "unexpected error"."""
+    from app.fetcher import FetchError
+
+    def boom(url, settings):
+        raise FetchError("site said no")
+
+    monkeypatch.setattr(service, "_make_parser", boom)
+
+    with TestClient(app) as client:
+        job_id = client.post(
+            "/api/jobs/preview", json={"url": "https://www.royalroad.com/fiction/1/x"}
+        ).json()["job_id"]
+        with client.stream("GET", f"/api/jobs/{job_id}/events") as response:
+            body = "".join(response.iter_text())
+
+    failure = _events([body])[-1]
+    assert failure["type"] == "error"
+    assert failure["detail"].startswith("fetch_error:")

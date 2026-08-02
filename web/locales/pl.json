@@ -6,22 +6,18 @@
   "app.title": "webnoveltoepub",
   "app.tagline": "Konwertuj web novele do plików EPUB. Self-hosted.",
   "language.label": "Język",
-
   "form.url.label": "Adres powieści",
   "form.url.placeholder": "https://www.royalroad.com/fiction/12345/slug",
   "form.url.hint": "Wklej link do strony głównej powieści (tej ze spisem rozdziałów).",
   "form.preview": "Wczytaj rozdziały",
   "form.loading": "Wczytywanie…",
-
   "supported.title": "Obsługiwane strony",
   "supported.heavy": "wymaga trybu ciężkiego",
-
   "novel.author": "Autor",
   "novel.chapters": "Rozdziały",
   "novel.tags": "Tagi",
   "novel.source": "Źródło",
   "novel.cover_alt": "Okładka",
-
   "chapters.title": "Rozdziały",
   "chapters.found": "Znaleziono {count} rozdziałów",
   "chapters.selected": "Zaznaczono: {count}",
@@ -32,14 +28,11 @@
   "chapters.range_to": "do",
   "chapters.range_apply": "Zastosuj zakres",
   "chapters.limit_warning": "Serwer ogranicza jeden EPUB do {max} rozdziałów. Nadmiarowe zostaną pominięte.",
-
   "options.title": "Opcje",
   "options.include_cover": "Dołącz okładkę",
   "options.language": "Język książki (metadane EPUB)",
-
   "tabs.convert": "Konwersja",
   "tabs.library": "Biblioteka",
-
   "library.title": "Biblioteka",
   "library.hint": "Każda konwersja zapisuje się tutaj, więc możesz później dociągnąć nowe rozdziały bez pobierania całej powieści od nowa.",
   "library.count": "Powieści: {count}",
@@ -58,12 +51,10 @@
   "library.update_failed": "Aktualizacja się nie powiodła.",
   "library.no_file": "Brak pliku EPUB na dysku — ten wpis to sama historia. Włącz WNE_SAVE_TO_DISK, żeby móc go aktualizować.",
   "library.confirm_delete_file": "Usunąć z dysku także plik EPUB powieści „{title}”?",
-
   "convert.button": "Generuj EPUB",
   "convert.building": "Składam EPUB-a…",
   "convert.working": "Generuję EPUB — przy długich powieściach może to potrwać kilka minut…",
   "convert.done": "Gotowe. Pobieranie powinno zacząć się automatycznie.",
-
   "error.title": "Coś poszło nie tak",
   "error.invalid_url": "To nie wygląda na poprawny adres http(s).",
   "error.unsupported_site": "Żaden parser nie obsługuje jeszcze tej strony. W README jest instrukcja, jak dodać własny.",
@@ -73,7 +64,32 @@
   "error.no_selection": "Zaznacz przynajmniej jeden rozdział.",
   "error.network": "Brak połączenia z serwerem.",
   "error.unknown": "Nieoczekiwany błąd.",
-
   "footer.source": "Kod źródłowy",
-  "footer.notice": "Używaj do treści, które wolno Ci pobierać, i respektuj regulaminy serwisów."
+  "footer.notice": "Używaj do treści, które wolno Ci pobierać, i respektuj regulaminy serwisów.",
+  "tabs.settings": "Ustawienia",
+  "job.pause": "Wstrzymaj",
+  "job.resume": "Wznów",
+  "job.stop": "Zatrzymaj",
+  "job.paused": "Wstrzymane — nic się teraz nie pobiera.",
+  "job.stopping": "Zatrzymuję po bieżącym rozdziale…",
+  "job.stopped": "Zatrzymane. To, co pobrano, zostało zachowane.",
+  "settings.title": "Automatyczne sprawdzanie",
+  "settings.auto_update": "Sprawdzaj bibliotekę pod kątem nowych rozdziałów automatycznie",
+  "settings.auto_update_hint": "Domyślnie wyłączone. Po włączeniu cała biblioteka jest sprawdzana w podanym odstępie, a nowe rozdziały dopisywane do istniejących EPUB-ów.",
+  "settings.interval": "Sprawdzaj co (godzin)",
+  "settings.check_on_startup": "Sprawdź też krótko po uruchomieniu aplikacji",
+  "settings.save": "Zapisz ustawienia",
+  "settings.saved": "Ustawienia zapisane.",
+  "settings.save_failed": "Nie udało się zapisać ustawień.",
+  "settings.last_run": "Ostatnie automatyczne sprawdzenie: {date}",
+  "settings.next_run": "Następne: {date}",
+  "settings.never": "nigdy",
+  "settings.disabled": "Automatyczne sprawdzanie jest wyłączone.",
+  "settings.exe_note": "W wersji .exe dla Windows aplikacja działa tylko wtedy, gdy jej okno jest otwarte, więc odstęp liczony w godzinach rzadko zdąży zadziałać. Pod Dockerem i CasaOS aplikacja chodzi non-stop i harmonogram działa naprawdę.",
+  "settings.history": "Ostatnie automatyczne sprawdzenia",
+  "settings.history_hint": "Ostatnie 20 przebiegów.",
+  "settings.history_empty": "Żadne automatyczne sprawdzenie jeszcze się nie odbyło.",
+  "settings.run_summary": "sprawdzono {checked} · zaktualizowano {updated} · błędów {failed}",
+  "error.stopped_empty": "Zatrzymano, zanim pobrał się pierwszy rozdział — nic nie zostało zapisane.",
+  "job.stopped_empty": "Zatrzymano przed pobraniem czegokolwiek."
 }

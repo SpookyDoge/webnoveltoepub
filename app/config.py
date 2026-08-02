@@ -46,9 +46,10 @@ class Settings(BaseSettings):
     max_retries: int = 3
 
     # --- Conversion limits ---
-    #: Hard cap on chapters in a single EPUB (protects against 3000-chapter
-    #: monsters that a browser timeout would kill anyway).
-    max_chapters: int = 300
+    #: Cap on chapters in a single EPUB. 0 (the default) means no limit -
+    #: progress now streams over SSE, so a long novel reports what it is doing
+    #: instead of looking like a hung request. Set a positive number to cap it.
+    max_chapters: int = 0
 
     # --- Playwright ("heavy mode") ---
     playwright_enabled: bool = False
