@@ -70,8 +70,9 @@ host, so you can pick them up in the CasaOS **File Manager** at that path
 (besides downloading them straight from the browser).
 
 > **Note:** these files pull a prebuilt image from
-> `ghcr.io/spookydoge/webnoveltoepub`. Until that image is published, build and
-> tag it locally first — CasaOS itself cannot build from source:
+> `ghcr.io/spookydoge/webnoveltoepub`, published automatically on every release
+> tag. Once the first release is out this step is optional — until then, build
+> and tag the image locally, because CasaOS itself cannot build from source:
 >
 > ```bash
 > docker build --target runtime -t ghcr.io/spookydoge/webnoveltoepub:latest .

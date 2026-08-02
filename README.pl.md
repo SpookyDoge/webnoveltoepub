@@ -71,8 +71,10 @@ więc znajdziesz je w **File Managerze** CasaOS pod tą ścieżką (niezależnie
 pobierania ich wprost z przeglądarki).
 
 > **Uwaga:** te pliki pobierają gotowy obraz z
-> `ghcr.io/spookydoge/webnoveltoepub`. Dopóki nie jest opublikowany, zbuduj go
-> i otaguj lokalnie — CasaOS nie buduje obrazów ze źródeł:
+> `ghcr.io/spookydoge/webnoveltoepub`, publikowany automatycznie przy każdym
+> tagu release'owym. Po wydaniu pierwszej wersji ten krok jest opcjonalny —
+> do tego czasu zbuduj obraz i otaguj go lokalnie, bo CasaOS nie buduje
+> obrazów ze źródeł:
 >
 > ```bash
 > docker build --target runtime -t ghcr.io/spookydoge/webnoveltoepub:latest .

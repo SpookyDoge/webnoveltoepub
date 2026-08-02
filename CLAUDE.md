@@ -91,10 +91,35 @@ Wersja lekka z `deploy/docker-compose.casaos.yml` przetestowana lokalnie:
 bind mount, `user: "0:0"` i zapis EPUB-ów do `/app/output` działają
 (nagłówek `X-Saved-Path` + pliki na wolumenie).
 
-**Otwarty punkt:** pliki z `deploy/` wskazują na
-`ghcr.io/spookydoge/webnoveltoepub:{latest,playwright}`, a **obraz nie jest
-jeszcze opublikowany**. Do zrobienia: workflow GitHub Actions publikujący oba
-targety do GHCR. Do tego czasu README podaje obejście (lokalny build z tagiem).
+### Publikacja obrazu
+
+`.github/workflows/publish-image.yml` publikuje oba warianty do GHCR pod
+`ghcr.io/spookydoge/webnoveltoepub` — **nowy release wystarczy otagować**:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Push taga `v*.*.*` uruchamia build obu targetów i wypycha cztery tagi:
+`latest` + `<wersja>` oraz `playwright` + `playwright-<wersja>`. Ruchome
+`latest`/`playwright` są tym, na co wskazują pliki z `deploy/`, więc każdy
+release automatycznie aktualizuje instalacje CasaOS.
+
+Szczegóły warte zapamiętania:
+- Logowanie idzie przez wbudowany `GITHUB_TOKEN` (`permissions: packages:
+  write`) — żadnego osobnego sekretu nie trzeba zakładać.
+- Nazwa obrazu jest wpisana wprost, nie przez `${{ github.repository }}`:
+  GHCR odrzuca wielkie litery, a właściciel repo to `SpookyDoge`.
+- Przed pushem wariant runtime przechodzi smoke test (kontener musi wstać
+  i odpowiedzieć na `/api/health`), żeby zepsute `latest` nie trafiło
+  do instalacji CasaOS.
+- `workflow_dispatch` z ręcznie podaną wersją pozwala opublikować pierwszy
+  obraz albo powtórzyć nieudany release bez tworzenia nowego taga.
+
+**Znane ograniczenie:** workflow buduje wyłącznie **amd64**, a pliki z `deploy/`
+deklarują w `x-casaos.architectures` również `arm64`. Na Raspberry Pi i innych
+ARM-ach obraz się nie uruchomi. Do zrobienia: buildx + QEMU (uwaga: emulowany
+build wariantu playwright jest bardzo wolny) albo zawężenie deklaracji do amd64.
 
 ### Schemat `x-casaos` — pilnować typów
 
