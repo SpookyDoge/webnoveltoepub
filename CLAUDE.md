@@ -77,10 +77,8 @@ Dwa targety w jednym `Dockerfile`:
 - `runtime` — lekki (~200 MB), domyślny, port 8000
 - `playwright` — + Chromium (~1.5 GB), za profilem compose, port 8001
 
-**Znany otwarty punkt:** `docker compose build` przechodzi (zweryfikowane),
-ale **`docker compose up` nie zostało sprawdzone end-to-end** — silnik Docker
-Desktop padł tuż po buildzie. Warstwa HTTP jest zweryfikowana lokalnie na
-uvicornie. Do domknięcia przy pierwszej okazji.
+Zweryfikowane end-to-end: `docker compose up --build` → healthcheck zielony
+w ~4 s → API, statyki i pełna konwersja działają z kontenera.
 
 ### Dystrybucja: `deploy/`
 
@@ -89,10 +87,23 @@ pliki compose bez profili i bez interpolacji `${VAR:-default}`, z bind mountem
 na `/DATA/AppData/webnoveltoepub/output` i etykietami `x-casaos`.
 `docker-compose.yml` w roocie zostaje nietknięty — służy developmentowi.
 
-**Drugi otwarty punkt:** pliki z `deploy/` wskazują na
+Wersja lekka z `deploy/docker-compose.casaos.yml` przetestowana lokalnie:
+bind mount, `user: "0:0"` i zapis EPUB-ów do `/app/output` działają
+(nagłówek `X-Saved-Path` + pliki na wolumenie).
+
+**Otwarty punkt:** pliki z `deploy/` wskazują na
 `ghcr.io/spookydoge/webnoveltoepub:{latest,playwright}`, a **obraz nie jest
 jeszcze opublikowany**. Do zrobienia: workflow GitHub Actions publikujący oba
 targety do GHCR. Do tego czasu README podaje obejście (lokalny build z tagiem).
+
+### Schemat `x-casaos` — pilnować typów
+
+Autorytatywne źródło to `ComposeAppStoreInfo` w `openapi.yaml` z repo
+CasaOS-AppManagement, plus działające przykłady z CasaOS-AppStore (Jellyfin,
+N8n). Wymagane pola: `author`, `category`, `description`, `developer`, `icon`,
+`screenshot_link`, `tagline`, `thumbnail`, `title`, `tips`, `index`, `port_map`.
+Mapami lokalizacji są **tylko** `title`, `tagline`, `description` (oraz opisy
+`envs`/`ports`/`volumes` w sekcji serwisu); reszta to zwykłe stringi.
 
 ### Zapis EPUB-ów na dysk
 
@@ -142,3 +153,14 @@ Rzeczy, które **już raz po cichu zepsuły wynik**. Nie cofać.
   artefaktem terminala.
 - **`window.chapters` na RoyalRoad ≠ tabela HTML.** Numer rozdziału w URL-u
   FreeWebNovel (`/chapter-N`) to pozycja w kolejności, nie numer z tytułu.
+- **`tips.custom` w `x-casaos` to zwykły string, nie mapa lokalizacji.** Mapa
+  wywala import: `'Tips.Custom' expected type 'string'`. To jedyne pole, które
+  wyłamuje się z konwencji sąsiednich `title`/`tagline`/`description`.
+- **Klucze lokalizacji to `en_US`, nie `en_us`.** Casing ma znaczenie i nie
+  powoduje błędu — CasaOS po prostu nie dopasowuje tłumaczenia i pokazuje
+  puste nazwy/opisy.
+- **`store_app_id` jest read-only.** Do identyfikacji aplikacji służy `id`
+  w formacie odwróconej domeny (`io.github.<user>.<app>`).
+- **Git Bash na Windowsie przerabia ścieżki uniksowe w `docker exec`.**
+  `/app/output` staje się `C:/Program Files/Git/app/output`. Obejście:
+  `MSYS_NO_PATHCONV=1` przed komendą.

@@ -45,29 +45,30 @@ services:
       envs:
         - container: WNE_PLAYWRIGHT_ENABLED
           description:
-            en_us: "Render every page with headless Chromium. Slower, needed for JS-heavy sites."
+            en_US: "Render every page with headless Chromium. Slower, needed for JS-heavy sites."
         - container: WNE_DEFAULT_LANGUAGE
           description:
-            en_us: "Fallback UI language when the browser language is unavailable (en, pl)."
+            en_US: "Fallback UI language when the browser language is unavailable (en, pl)."
         - container: WNE_MAX_CHAPTERS
           description:
-            en_us: "Maximum number of chapters in a single EPUB."
+            en_US: "Maximum number of chapters in a single EPUB."
         - container: WNE_REQUEST_DELAY
           description:
-            en_us: "Delay in seconds between HTTP requests. Keep it polite."
+            en_US: "Delay in seconds between HTTP requests. Keep it polite."
         - container: WNE_SAVE_TO_DISK
           description:
-            en_us: "Also save a copy of every generated EPUB to the output folder."
+            en_US: "Also save a copy of every generated EPUB to the output folder."
       ports:
         - container: "8000"
           description:
-            en_us: "Web UI"
+            en_US: "Web UI"
       volumes:
         - container: /app/output
           description:
-            en_us: "Generated EPUB files"
+            en_US: "Generated EPUB files"
 
 x-casaos:
+  id: io.github.spookydoge.webnoveltoepub-playwright
   architectures:
     - amd64
     - arm64
@@ -75,14 +76,15 @@ x-casaos:
   author: SpookyDoge
   developer: SpookyDoge
   category: Utilities
-  store_app_id: webnoveltoepub-playwright
   icon: https://raw.githubusercontent.com/SpookyDoge/webnoveltoepub/main/web/icon.png
+  thumbnail: ""
+  screenshot_link: []
   title:
-    en_us: webnoveltoepub (Playwright)
+    en_US: webnoveltoepub (Playwright)
   tagline:
-    en_us: Convert web novels into EPUB files - with headless Chromium
+    en_US: Convert web novels into EPUB files - with headless Chromium
   description:
-    en_us: >-
+    en_US: >-
       Self-hosted web novel to EPUB converter - a server-side counterpart to the
       WebToEpub browser extension. This build bundles headless Chromium for
       sites that render their chapters with JavaScript. Pick the lightweight
@@ -90,8 +92,9 @@ x-casaos:
   index: /
   port_map: "8000"
   scheme: http
+  # Uwaga: tips.custom MUSI byc zwyklym stringiem. Mapa lokalizacji (en_US: ...)
+  # wywala import bledem "Tips.Custom expected type 'string'".
   tips:
-    custom:
-      en_us: >-
-        Generated EPUB files are saved to /DATA/AppData/webnoveltoepub/output
-        and can be browsed from the CasaOS File Manager.
+    custom: >-
+      Generated EPUB files are saved to /DATA/AppData/webnoveltoepub/output
+      and can be browsed from the CasaOS File Manager.
