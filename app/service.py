@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .config import Settings, get_settings
 from .epub_builder import build_epub, slugify
@@ -35,6 +36,8 @@ class ConversionResult:
     metadata: NovelMetadata
     chapter_count: int
     warnings: list[str] = field(default_factory=list)
+    #: Ustawione, gdy kopia trafila na dysk (WNE_SAVE_TO_DISK).
+    saved_path: Path | None = None
 
 
 def _make_parser(url: str, settings: Settings) -> tuple[BaseParser, Fetcher]:
@@ -107,13 +110,57 @@ def convert(request: ConvertRequest, settings: Settings | None = None) -> Conver
     finally:
         fetcher.close()
 
+    file_name = f"{slugify(metadata.title)}.epub"
     return ConversionResult(
-        file_name=f"{slugify(metadata.title)}.epub",
+        file_name=file_name,
         content=payload,
         metadata=metadata,
         chapter_count=len(contents),
         warnings=warnings,
+        saved_path=save_to_disk(file_name, payload, settings),
     )
+
+
+def save_to_disk(file_name: str, payload: bytes, settings: Settings) -> Path | None:
+    """Zapisuje kopie EPUB-a w `settings.output_dir`, jesli wlaczono zapis.
+
+    Problem z dyskiem (brak uprawnien do bind mounta, pelny wolumen) nie moze
+    wywrocic konwersji - uzytkownik i tak dostaje plik w odpowiedzi HTTP.
+    """
+    if not settings.save_to_disk:
+        return None
+
+    try:
+        directory = settings.output_dir
+        directory.mkdir(parents=True, exist_ok=True)
+        target = _free_path(directory / file_name)
+        target.write_bytes(payload)
+    except OSError as exc:
+        log.warning(
+            "Nie udalo sie zapisac EPUB-a w %s: %s. "
+            "Przy bind mouncie sprawdz uprawnienia do zapisu dla uzytkownika kontenera.",
+            settings.output_dir,
+            exc,
+        )
+        return None
+
+    log.info("Zapisano %s", target)
+    return target
+
+
+def _free_path(path: Path) -> Path:
+    """Nie nadpisujemy cudzych plikow - kolejne konwersje dostaja sufiks -2, -3...
+
+    Ta sama powiesc konwertowana w innym zakresie rozdzialow ma te sama nazwe,
+    a po cichu podmieniony plik to utrata danych uzytkownika.
+    """
+    if not path.exists():
+        return path
+    for counter in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"Za duzo plikow o nazwie {path.name}")
 
 
 def select_chapters(chapters: list[ChapterRef], request: ConvertRequest) -> list[ChapterRef]:

@@ -129,14 +129,18 @@ async def convert_novel(request: ConvertRequest) -> Response:
         f'attachment; filename="{result.file_name}"; '
         f"filename*=UTF-8''{quote(result.file_name)}"
     )
+    headers = {
+        "Content-Disposition": disposition,
+        "X-Chapter-Count": str(result.chapter_count),
+        "X-Warning-Count": str(len(result.warnings)),
+    }
+    if result.saved_path is not None:
+        headers["X-Saved-Path"] = str(result.saved_path)
+
     return Response(
         content=result.content,
         media_type="application/epub+zip",
-        headers={
-            "Content-Disposition": disposition,
-            "X-Chapter-Count": str(result.chapter_count),
-            "X-Warning-Count": str(len(result.warnings)),
-        },
+        headers=headers,
     )
 
 

@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     playwright_wait_until: str = "networkidle"
     playwright_timeout_ms: int = 45_000
 
+    # --- Zapis na dysk ---
+    #: Poza streamowaniem w odpowiedzi HTTP zapisz kopie EPUB-a na dysku.
+    #: Domyslnie wylaczone (aplikacja jest bezstanowa); wlaczaja to gotowce
+    #: dla paneli self-hosted, gdzie uzytkownik szuka plikow w File Managerze.
+    save_to_disk: bool = False
+    #: Sciezka wzgledna rozwiazuje sie wzgledem WORKDIR, czyli /app/output
+    #: w kontenerze. Tam podpina sie bind mount.
+    output_dir: Path = Path("output")
+
     # --- UI / i18n ---
     default_language: str = "en"
 

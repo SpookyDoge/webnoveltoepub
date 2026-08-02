@@ -1,7 +1,7 @@
 # CLAUDE.md — brief projektu
 
-Szybki kontekst na start sesji. Szczegóły użytkowe są w [README.md](README.md);
-tutaj są decyzje, konwencje i pułapki.
+Szybki kontekst na start sesji. Szczegóły użytkowe są w [README.md](README.md)
+(wersja PL: [README.pl.md](README.pl.md)); tutaj są decyzje, konwencje i pułapki.
 
 ## Czym to jest
 
@@ -81,6 +81,26 @@ Dwa targety w jednym `Dockerfile`:
 ale **`docker compose up` nie zostało sprawdzone end-to-end** — silnik Docker
 Desktop padł tuż po buildzie. Warstwa HTTP jest zweryfikowana lokalnie na
 uvicornie. Do domknięcia przy pierwszej okazji.
+
+### Dystrybucja: `deploy/`
+
+Osobna, uproszczona ścieżka dla paneli self-hosted (CasaOS): dwa samodzielne
+pliki compose bez profili i bez interpolacji `${VAR:-default}`, z bind mountem
+na `/DATA/AppData/webnoveltoepub/output` i etykietami `x-casaos`.
+`docker-compose.yml` w roocie zostaje nietknięty — służy developmentowi.
+
+**Drugi otwarty punkt:** pliki z `deploy/` wskazują na
+`ghcr.io/spookydoge/webnoveltoepub:{latest,playwright}`, a **obraz nie jest
+jeszcze opublikowany**. Do zrobienia: workflow GitHub Actions publikujący oba
+targety do GHCR. Do tego czasu README podaje obejście (lokalny build z tagiem).
+
+### Zapis EPUB-ów na dysk
+
+`WNE_SAVE_TO_DISK` (domyślnie `false`) + `WNE_OUTPUT_DIR` (domyślnie `output`,
+czyli `/app/output` w kontenerze). Aplikacja jest z założenia bezstanowa —
+zapis istnieje po to, żeby użytkownik panelu znalazł pliki w File Managerze.
+Kopia nigdy nie nadpisuje istniejącego pliku (sufiks `-2`, `-3`), a błąd dysku
+jest tylko logowany: konwersja ma się udać nawet gdy bind mount jest read-only.
 
 ## Wspierane serwisy
 

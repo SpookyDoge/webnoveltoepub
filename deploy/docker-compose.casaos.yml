@@ -1,0 +1,92 @@
+# webnoveltoepub - wersja lekka (requests + BeautifulSoup) dla CasaOS
+# i innych paneli self-hosted.
+#
+# CasaOS: App Store -> Custom install -> wklej cala zawartosc tego pliku -> Install
+#
+# Roznice wobec docker-compose.yml z roota repo:
+#   * image zamiast build - CasaOS nie buduje obrazow ze zrodel
+#   * bez profiles - CasaOS uruchamia caly plik na raz
+#   * wartosci wpisane wprost zamiast ${VAR:-default} - Custom install
+#     nie zawsze respektuje osobny plik .env
+#   * bind mount na /DATA/AppData/... - gotowe EPUB-y widac w File Managerze
+#   * zapis na dysk wlaczony (WNE_SAVE_TO_DISK)
+
+name: webnoveltoepub
+
+services:
+  app:
+    image: ghcr.io/spookydoge/webnoveltoepub:latest
+    container_name: webnoveltoepub
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      WNE_SAVE_TO_DISK: "true"
+      WNE_OUTPUT_DIR: "/app/output"
+      WNE_MAX_CHAPTERS: "300"
+      WNE_REQUEST_DELAY: "0.75"
+      WNE_DEFAULT_LANGUAGE: "en"
+      WNE_LOG_LEVEL: "INFO"
+    volumes:
+      - /DATA/AppData/webnoveltoepub/output:/app/output
+    # Bind mount na /DATA nalezy do roota, a obraz domyslnie chodzi jako
+    # nie-root (uid 10001). Bez tego zapis EPUB-ow by sie nie udal, a CasaOS
+    # nie daje wygodnego sposobu na chown z poziomu UI.
+    user: "0:0"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    x-casaos:
+      envs:
+        - container: WNE_DEFAULT_LANGUAGE
+          description:
+            en_us: "Fallback UI language when the browser language is unavailable (en, pl)."
+        - container: WNE_MAX_CHAPTERS
+          description:
+            en_us: "Maximum number of chapters in a single EPUB."
+        - container: WNE_REQUEST_DELAY
+          description:
+            en_us: "Delay in seconds between HTTP requests. Keep it polite."
+        - container: WNE_SAVE_TO_DISK
+          description:
+            en_us: "Also save a copy of every generated EPUB to the output folder."
+      ports:
+        - container: "8000"
+          description:
+            en_us: "Web UI"
+      volumes:
+        - container: /app/output
+          description:
+            en_us: "Generated EPUB files"
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  author: SpookyDoge
+  developer: SpookyDoge
+  category: Utilities
+  store_app_id: webnoveltoepub
+  icon: https://raw.githubusercontent.com/SpookyDoge/webnoveltoepub/main/web/icon.png
+  title:
+    en_us: webnoveltoepub
+  tagline:
+    en_us: Convert web novels into EPUB files
+  description:
+    en_us: >-
+      Self-hosted web novel to EPUB converter - a server-side counterpart to the
+      WebToEpub browser extension. Paste a novel URL, review the detected
+      chapters and download an EPUB. Lightweight build: no headless browser.
+      Supported sites: RoyalRoad, FreeWebNovel.
+  index: /
+  port_map: "8000"
+  scheme: http
+  tips:
+    custom:
+      en_us: >-
+        Generated EPUB files are saved to /DATA/AppData/webnoveltoepub/output
+        and can be browsed from the CasaOS File Manager.

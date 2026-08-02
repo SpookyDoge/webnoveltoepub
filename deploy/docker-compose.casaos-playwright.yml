@@ -1,0 +1,97 @@
+# webnoveltoepub - wersja "ciezka" z Chromium (Playwright) dla CasaOS
+# i innych paneli self-hosted.
+#
+# CasaOS: App Store -> Custom install -> wklej cala zawartosc tego pliku -> Install
+#
+# Samodzielny plik, nie profil - wklejasz go zamiast wersji lekkiej.
+# Potrzebny tylko wtedy, gdy dodasz parser serwisu renderujacego tresc
+# JavaScriptem. Obraz wazy ~1.5 GB (wersja lekka ~200 MB), wiec bez takiej
+# potrzeby wybierz docker-compose.casaos.yml.
+#
+# Uwaga: obie wersje slucham na porcie 8000. Jesli chcesz miec je obok siebie,
+# zmien mapowanie portu hosta w jednej z nich (np. "8001:8000").
+
+name: webnoveltoepub-playwright
+
+services:
+  app:
+    image: ghcr.io/spookydoge/webnoveltoepub:playwright
+    container_name: webnoveltoepub-playwright
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      WNE_PLAYWRIGHT_ENABLED: "true"
+      WNE_SAVE_TO_DISK: "true"
+      WNE_OUTPUT_DIR: "/app/output"
+      WNE_MAX_CHAPTERS: "300"
+      # Renderowanie strony jest wolniejsze i drozsze dla serwisu - zwalniamy.
+      WNE_REQUEST_DELAY: "1.5"
+      WNE_DEFAULT_LANGUAGE: "en"
+      WNE_LOG_LEVEL: "INFO"
+    volumes:
+      - /DATA/AppData/webnoveltoepub/output:/app/output
+    # Jak w wersji lekkiej: bind mount na /DATA nalezy do roota.
+    user: "0:0"
+    # Chromium wywraca sie na domyslnych 64 MB pamieci wspoldzielonej.
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    x-casaos:
+      envs:
+        - container: WNE_PLAYWRIGHT_ENABLED
+          description:
+            en_us: "Render every page with headless Chromium. Slower, needed for JS-heavy sites."
+        - container: WNE_DEFAULT_LANGUAGE
+          description:
+            en_us: "Fallback UI language when the browser language is unavailable (en, pl)."
+        - container: WNE_MAX_CHAPTERS
+          description:
+            en_us: "Maximum number of chapters in a single EPUB."
+        - container: WNE_REQUEST_DELAY
+          description:
+            en_us: "Delay in seconds between HTTP requests. Keep it polite."
+        - container: WNE_SAVE_TO_DISK
+          description:
+            en_us: "Also save a copy of every generated EPUB to the output folder."
+      ports:
+        - container: "8000"
+          description:
+            en_us: "Web UI"
+      volumes:
+        - container: /app/output
+          description:
+            en_us: "Generated EPUB files"
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  author: SpookyDoge
+  developer: SpookyDoge
+  category: Utilities
+  store_app_id: webnoveltoepub-playwright
+  icon: https://raw.githubusercontent.com/SpookyDoge/webnoveltoepub/main/web/icon.png
+  title:
+    en_us: webnoveltoepub (Playwright)
+  tagline:
+    en_us: Convert web novels into EPUB files - with headless Chromium
+  description:
+    en_us: >-
+      Self-hosted web novel to EPUB converter - a server-side counterpart to the
+      WebToEpub browser extension. This build bundles headless Chromium for
+      sites that render their chapters with JavaScript. Pick the lightweight
+      build unless you actually need it.
+  index: /
+  port_map: "8000"
+  scheme: http
+  tips:
+    custom:
+      en_us: >-
+        Generated EPUB files are saved to /DATA/AppData/webnoveltoepub/output
+        and can be browsed from the CasaOS File Manager.

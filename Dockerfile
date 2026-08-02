@@ -32,6 +32,10 @@ FROM base AS runtime
 COPY app ./app
 COPY web ./web
 
+# Katalog na kopie EPUB-ow (WNE_SAVE_TO_DISK). Musi nalezec do appuser,
+# inaczej nie-root nie zapisze nic bez podpietego bind mounta.
+RUN mkdir -p /app/output && chown appuser:appuser /app/output
+
 USER appuser
 EXPOSE 8000
 
@@ -55,6 +59,10 @@ RUN pip install --no-cache-dir -r requirements-playwright.txt \
 
 COPY app ./app
 COPY web ./web
+
+# Katalog na kopie EPUB-ow (WNE_SAVE_TO_DISK). Musi nalezec do appuser,
+# inaczej nie-root nie zapisze nic bez podpietego bind mounta.
+RUN mkdir -p /app/output && chown appuser:appuser /app/output
 
 USER appuser
 EXPOSE 8000
