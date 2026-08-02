@@ -98,5 +98,15 @@
   "library.importing": "Importuję…",
   "library.imported": "Zaimportowano {imported} powieści · {skipped} już znanych · {failed} nieudanych.",
   "library.import_failed": "Import się nie powiódł.",
-  "error.import_error": "Ten plik nie jest eksportem z WebToEpub, który ta aplikacja potrafi odczytać."
+  "error.import_error": "Ten plik nie jest eksportem z WebToEpub, który ta aplikacja potrafi odczytać.",
+  "job.kind_convert": "Konwersja",
+  "job.kind_update": "Aktualizacja z biblioteki",
+  "job.kind_update_all": "Aktualizacja całej biblioteki",
+  "job.series_position": "Aktualizuję {index} z {total}: {title}",
+  "job.counter_chapters": "{value} / {total} rozdziałów",
+  "job.counter_novels": "{value} / {total} powieści",
+  "job.stop_note_single": "Zatrzymanie domyka pobierany rozdział i zachowuje wszystko, co dotarło do tej pory.",
+  "job.stop_note_series": "Zatrzymanie kończy cały przebieg, nie tylko tę powieść. Wszystko już zaktualizowane zostaje zapisane.",
+  "job.download_updated": "Pobierz zaktualizowany EPUB",
+  "error.job_busy": "Coś już się wykonuje. Poczekaj na koniec albo najpierw to zatrzymaj."
 }

@@ -29,6 +29,12 @@
 
 * { box-sizing: border-box; }
 
+/* Any author rule that sets `display` (.novel, .progress, .button-link...)
+   beats the browser's own [hidden] rule, so hidden elements would still be
+   drawn - as empty cards and stray buttons. This puts [hidden] back in
+   charge; the whole UI relies on toggling it. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 0 1rem 3rem;
@@ -202,6 +208,22 @@ a { color: var(--accent); }
 /* Progress */
 .progress { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
 .progress progress { flex: 1; height: 0.6rem; }
+
+/* The shared job panel */
+.job-card { border-left: 3px solid var(--accent); }
+
+.job-kind {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.job-title { margin: 0.15rem 0 0; font-size: 1.15rem; }
+.job-card .meta { margin: 0.35rem 0 0; color: var(--muted); }
+.job-card .hint { margin: 0.5rem 0 0; }
+#job-download { display: inline-block; margin-top: 0.75rem; }
 
 /* Library */
 .library-list { list-style: none; margin: 0.5rem 0 0; padding: 0; }

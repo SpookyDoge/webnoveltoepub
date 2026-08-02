@@ -12,6 +12,10 @@ const state = {
   library: [],
   settings: null,
   jobId: null,
+  // One long operation at a time. Two would double the request rate against
+  // the same site (each job builds its own throttled Fetcher) and the single
+  // Pause/Stop pair can only steer one of them.
+  jobBusy: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -94,9 +98,18 @@ const el = {
   bookLanguage: document.getElementById("book-language"),
   convertButton: document.getElementById("convert-button"),
   status: document.getElementById("status-message"),
-  convertProgress: document.getElementById("convert-progress"),
-  convertBar: document.getElementById("convert-bar"),
-  convertCounter: document.getElementById("convert-counter"),
+  // The shared job panel - every long operation reports through these.
+  jobCard: document.getElementById("job-card"),
+  jobKind: document.getElementById("job-kind"),
+  jobTitle: document.getElementById("job-title"),
+  jobSeries: document.getElementById("job-series"),
+  jobProgress: document.getElementById("job-progress"),
+  jobBar: document.getElementById("job-bar"),
+  jobCounter: document.getElementById("job-counter"),
+  jobPause: document.getElementById("job-pause"),
+  jobStop: document.getElementById("job-stop"),
+  jobStopNote: document.getElementById("job-stop-note"),
+  jobDownload: document.getElementById("job-download"),
   tabConvert: document.getElementById("tab-convert"),
   tabLibrary: document.getElementById("tab-library"),
   panelConvert: document.getElementById("panel-convert"),
@@ -105,15 +118,8 @@ const el = {
   libraryCount: document.getElementById("library-count"),
   libraryEmpty: document.getElementById("library-empty"),
   libraryStatus: document.getElementById("library-status"),
-  libraryProgress: document.getElementById("library-progress"),
-  libraryBar: document.getElementById("library-bar"),
-  libraryCounter: document.getElementById("library-counter"),
   updateAll: document.getElementById("update-all"),
   libraryRefresh: document.getElementById("library-refresh"),
-  convertPause: document.getElementById("convert-pause"),
-  convertStop: document.getElementById("convert-stop"),
-  libraryPause: document.getElementById("library-pause"),
-  libraryStop: document.getElementById("library-stop"),
   tabSettings: document.getElementById("tab-settings"),
   panelSettings: document.getElementById("panel-settings"),
   autoUpdateEnabled: document.getElementById("auto-update-enabled"),
@@ -261,12 +267,12 @@ function clearError() {
   el.errorBox.hidden = true;
 }
 
-function setStatus(key) {
+function setStatus(key, params) {
   if (!key) {
     el.status.hidden = true;
     return;
   }
-  el.status.textContent = t(key);
+  el.status.textContent = t(key, params);
   el.status.hidden = false;
 }
 
@@ -285,6 +291,118 @@ function errorKeyFromDetail(detail) {
   ];
   const match = known.find((key) => String(detail || "").startsWith(key));
   return match ? `error.${match}` : "error.unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Job panel - the one progress UI, shared by every long operation
+// ---------------------------------------------------------------------------
+
+/**
+ * The progress panel on the Convert tab.
+ *
+ * Conversion, a single library update and a whole-library run all drive this
+ * same object; they differ only in the context they pass to `begin` and in
+ * which SSE events they forward to `setProgress`. Nothing else in the app
+ * draws a progress bar.
+ */
+const jobPanel = {
+  /**
+   * Opens the panel for a new run.
+   *
+   * @param {string} kindKey  translation key naming the operation
+   * @param {string} title    what is being worked on, if known yet
+   * @param {boolean} series  true for "Update all", which changes what Stop
+   *                          does - and the note under the buttons says so
+   */
+  begin({ kindKey, title = "", series = false }) {
+    el.jobCard.hidden = false;
+    el.jobKind.textContent = t(kindKey);
+    this.setTitle(title);
+    el.jobSeries.hidden = true;
+    el.jobDownload.hidden = true;
+    el.jobProgress.hidden = true;
+    el.jobStopNote.textContent = t(series ? "job.stop_note_series" : "job.stop_note_single");
+    el.jobStopNote.hidden = false;
+    setStatus(null);
+    el.jobCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  },
+
+  setTitle(title) {
+    el.jobTitle.textContent = title || "";
+    el.jobTitle.hidden = !title;
+  },
+
+  /** "Updating 2 of 7: Mother of Learning" - only shown for a series. */
+  setSeries(index, total, title) {
+    el.jobSeries.textContent = t("job.series_position", { index, total, title });
+    el.jobSeries.hidden = false;
+    this.setTitle(title);
+  },
+
+  /**
+   * Moves the bar. `unitKey` labels the counter, because in a series run the
+   * bar switches between novels and chapters and bare numbers would be
+   * ambiguous.
+   */
+  setProgress(value, total, unitKey = "job.counter_chapters") {
+    el.jobProgress.hidden = false;
+    el.jobBar.max = total || 1;
+    el.jobBar.value = value;
+    el.jobCounter.textContent = t(unitKey, { value, total });
+  },
+
+  /**
+   * Hands the run to the Pause/Stop buttons.
+   *
+   * The row appears now rather than on the first progress event: the buttons
+   * live in it, and a job still resolving the first request has no counts yet
+   * but must still be stoppable. A `progress` with no value renders as an
+   * indeterminate bar, which is exactly the state being reported.
+   */
+  attach(jobId) {
+    el.jobProgress.hidden = false;
+    el.jobBar.removeAttribute("value");
+    el.jobCounter.textContent = "";
+    attachControls(el.jobPause, el.jobStop, jobId);
+  },
+
+  /** Offers the finished EPUB, for runs that do not download one by themselves. */
+  offerDownload(href, labelKey) {
+    el.jobDownload.href = href;
+    el.jobDownload.textContent = t(labelKey);
+    el.jobDownload.hidden = false;
+  },
+
+  /** The run is over: controls go away, the status and result stay readable. */
+  finish() {
+    el.jobProgress.hidden = true;
+    el.jobStopNote.hidden = true;
+    releaseControls(el.jobPause, el.jobStop);
+  },
+
+  hide() {
+    el.jobCard.hidden = true;
+  },
+};
+
+/**
+ * Claims the single job slot, or explains why it cannot be had.
+ *
+ * The busy message goes to the Convert tab together with the panel showing
+ * what is already running - that is the answer to "why can't I?".
+ */
+function claimJob() {
+  if (state.jobBusy) {
+    selectTab("convert");
+    showError("error.job_busy");
+    return false;
+  }
+  state.jobBusy = true;
+  return true;
+}
+
+function releaseJob() {
+  state.jobBusy = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,8 +475,12 @@ function showJobError(error) {
 
 async function loadPreview(event) {
   event.preventDefault();
+  // A scan is a long scrape too, so it takes the same single job slot.
+  if (!claimJob()) return;
   clearError();
   setStatus(null);
+  // A finished run's panel would otherwise sit above the new novel.
+  jobPanel.hide();
   el.previewButton.disabled = true;
   el.previewButton.textContent = t("form.loading");
 
@@ -374,7 +496,9 @@ async function loadPreview(event) {
       {
         metadata: ({ metadata }) => {
           state.previewMetadata = metadata;
-          renderNovel({ metadata, chapters: [], max_chapters: state.maxChapters });
+          // The cap only becomes meaningful once we know how many chapters
+          // there are, which is after the scan - so 0 (no warning) until then.
+          renderNovel({ metadata, chapters: [], max_chapters: 0 });
         },
         // The whole point of the stream: chapters land in the list as each
         // page of the source's table of contents comes back.
@@ -392,6 +516,7 @@ async function loadPreview(event) {
   } catch (error) {
     showJobError(error);
   } finally {
+    releaseJob();
     el.previewButton.disabled = false;
     el.previewButton.textContent = t("form.preview");
   }
@@ -404,10 +529,15 @@ async function convert() {
     showError("error.no_selection");
     return;
   }
+  if (!claimJob()) return;
 
   el.convertButton.disabled = true;
+  jobPanel.begin({
+    kindKey: "job.kind_convert",
+    title: state.preview.metadata.title,
+  });
   setStatus("convert.working");
-  setProgress(el.convertProgress, el.convertBar, el.convertCounter, 0, selected.length);
+  jobPanel.setProgress(0, selected.length);
   // A stopped run still produces a download, so "done" must not overwrite the
   // explanation that the book is deliberately short.
   let stopped = false;
@@ -422,10 +552,8 @@ async function convert() {
         language: el.bookLanguage.value.trim() || null,
       },
       {
-        onStart: (jobId) => attachControls(el.convertPause, el.convertStop, jobId),
-        chapter_downloaded: ({ index, total }) => {
-          setProgress(el.convertProgress, el.convertBar, el.convertCounter, index, total);
-        },
+        onStart: (jobId) => jobPanel.attach(jobId),
+        chapter_downloaded: ({ index, total }) => jobPanel.setProgress(index, total),
         // Emitted when Stop lands: the book is built from what arrived.
         stopped: ({ downloaded }) => {
           stopped = true;
@@ -450,9 +578,9 @@ async function convert() {
     showJobError(error);
     setStatus(null);
   } finally {
+    releaseJob();
     el.convertButton.disabled = false;
-    el.convertProgress.hidden = true;
-    releaseControls(el.convertPause, el.convertStop);
+    jobPanel.finish();
     loadLibrary();
   }
 }
@@ -547,58 +675,81 @@ function renderLibrary() {
   );
 }
 
+/**
+ * Tops up one novel, reporting into the shared panel on the Convert tab.
+ *
+ * The user is moved there: it is where every long operation is shown, and
+ * leaving them here would put Pause/Stop on a tab they are not looking at.
+ */
 async function updateEntry(entry, button) {
+  if (!claimJob()) return;
   clearError();
   button.disabled = true;
-  setLibraryStatus("library.updating", { title: entry.title });
+  selectTab("convert");
+  jobPanel.begin({ kindKey: "job.kind_update", title: entry.title });
+  setStatus("library.updating", { title: entry.title });
 
   try {
     await runJob(`/api/library/${entry.id}/update`, null, {
-      onStart: (jobId) => attachControls(el.libraryPause, el.libraryStop, jobId),
-      update_started: ({ new_chapters }) => {
-        setProgress(el.libraryProgress, el.libraryBar, el.libraryCounter, 0, new_chapters);
+      onStart: (jobId) => jobPanel.attach(jobId),
+      // The title the server knows wins - the row may have been stale.
+      entry_started: ({ title }) => jobPanel.setTitle(title),
+      update_started: ({ new_chapters }) => jobPanel.setProgress(0, new_chapters),
+      chapter_downloaded: ({ index, total }) => jobPanel.setProgress(index, total),
+      entry_finished: (result) => {
+        setStatus(libraryStatusKey(result), result);
+        if (result.status === "updated" || result.status === "stopped") {
+          jobPanel.offerDownload(
+            `/api/library/${entry.id}/download`,
+            "job.download_updated"
+          );
+        }
       },
-      chapter_downloaded: ({ index, total }) => {
-        setProgress(el.libraryProgress, el.libraryBar, el.libraryCounter, index, total);
-      },
-      entry_finished: (result) => setLibraryStatus(libraryStatusKey(result), result),
     });
   } catch (error) {
     showJobError(error);
   } finally {
+    releaseJob();
     button.disabled = false;
-    el.libraryProgress.hidden = true;
-    releaseControls(el.libraryPause, el.libraryStop);
+    jobPanel.finish();
     loadLibrary();
   }
 }
 
+/**
+ * Walks the whole library, one novel at a time.
+ *
+ * The panel carries two levels of context: which novel of how many is being
+ * handled, and the chapter progress inside it.
+ */
 async function updateAll() {
+  if (!claimJob()) return;
   clearError();
   el.updateAll.disabled = true;
-  setLibraryStatus("library.updating_all");
+  selectTab("convert");
+  jobPanel.begin({ kindKey: "job.kind_update_all", series: true });
+  setStatus("library.updating_all");
 
-  let done = 0;
   try {
     await runJob("/api/library/update-all", null, {
       // Stop here ends the whole series; novels already refreshed stay saved.
-      onStart: (jobId) => attachControls(el.libraryPause, el.libraryStop, jobId),
+      onStart: (jobId) => jobPanel.attach(jobId),
       bulk_progress: ({ index, total, title }) => {
-        done = index;
-        setProgress(el.libraryProgress, el.libraryBar, el.libraryCounter, index, total);
-        setLibraryStatus("library.updating", { title });
+        jobPanel.setSeries(index, total, title);
+        // Until this novel reports chapters, the bar tracks the series - a
+        // novel that turns out to be up to date reports none at all.
+        jobPanel.setProgress(index, total, "job.counter_novels");
       },
-      chapter_downloaded: ({ index, total }) => {
-        el.libraryCounter.textContent = `${done} · ${index}/${total}`;
-      },
+      update_started: ({ new_chapters }) => jobPanel.setProgress(0, new_chapters),
+      chapter_downloaded: ({ index, total }) => jobPanel.setProgress(index, total),
     });
-    setLibraryStatus("library.update_all_done");
+    setStatus("library.update_all_done");
   } catch (error) {
     showJobError(error);
   } finally {
+    releaseJob();
     el.updateAll.disabled = false;
-    el.libraryProgress.hidden = true;
-    releaseControls(el.libraryPause, el.libraryStop);
+    jobPanel.finish();
     loadLibrary();
   }
 }
@@ -663,13 +814,6 @@ function setLibraryStatus(key, params) {
 function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(state.language);
-}
-
-function setProgress(container, bar, counter, value, total) {
-  container.hidden = false;
-  bar.max = total || 1;
-  bar.value = value;
-  counter.textContent = `${value} / ${total}`;
 }
 
 function selectTab(name) {

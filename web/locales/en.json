@@ -98,5 +98,15 @@
   "library.importing": "Importing…",
   "library.imported": "Imported {imported} novels · {skipped} already known · {failed} failed.",
   "library.import_failed": "Import failed.",
-  "error.import_error": "That file is not a WebToEpub export this app can read."
+  "error.import_error": "That file is not a WebToEpub export this app can read.",
+  "job.kind_convert": "Converting",
+  "job.kind_update": "Library update",
+  "job.kind_update_all": "Updating the whole library",
+  "job.series_position": "Updating {index} of {total}: {title}",
+  "job.counter_chapters": "{value} / {total} chapters",
+  "job.counter_novels": "{value} / {total} novels",
+  "job.stop_note_single": "Stop finishes the chapter being downloaded, then keeps everything fetched so far.",
+  "job.stop_note_series": "Stop ends the whole run, not just this novel. Everything already updated stays saved.",
+  "job.download_updated": "Download the updated EPUB",
+  "error.job_busy": "Something is already running. Wait for it to finish, or stop it first."
 }

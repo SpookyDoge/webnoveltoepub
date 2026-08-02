@@ -233,6 +233,45 @@ Uwagi:
 - Zadania żyją w pamięci (`JOB_TTL_SECONDS`), bo trzymają gotowy EPUB, który ma
   sens tylko dla przeglądarki, która o niego poprosiła.
 
+### Panel zadania w UI: Library → zakładka Convert
+
+W froncie jest **jeden** pasek postępu: `#job-card` w zakładce Convert,
+obsługiwany przez obiekt `jobPanel` w `web/app.js`. Korzystają z niego trzy
+przepływy — konwersja, „Update" jednej powieści i „Update all" — różniąc się
+wyłącznie kontekstem podanym do `jobPanel.begin()` i tym, które eventy SSE
+przekazują do `setProgress`. Nic innego w aplikacji nie rysuje paska.
+
+Kliknięcie „Update" w Library **przełącza użytkownika na Convert** (`selectTab`)
+i otwiera tam panel. Powód: to jedyne miejsce z paskiem, a Pause/Stop leżą
+w tym panelu — zostawienie użytkownika w Library znaczyłoby, że sterowanie
+zadaniem jest na zakładce, której nie widzi.
+
+- **Panel leży poza `#chapters-card`.** Ta karta jest ukryta do czasu skanu,
+  a aktualizacja z biblioteki żadnego skanu nie robi — pasek zagnieżdżony
+  w środku byłby niewidoczny. To był powód przeniesienia, nie kosmetyka.
+- **Wiersz paska pojawia się w `attach()`, nie przy pierwszym evencie postępu.**
+  Przyciski Pause/Stop siedzą w tym wierszu, a zadanie wiszące na pierwszym
+  żądaniu nie zna jeszcze żadnych liczb — musi być mimo to do zatrzymania.
+  `<progress>` bez atrybutu `value` renderuje się jako pasek nieokreślony,
+  co dokładnie oddaje ten stan.
+- **Licznik ma jednostkę** (`job.counter_chapters` / `job.counter_novels`),
+  bo w serii pasek przełącza się między powieściami a rozdziałami i samo
+  „2 / 7" byłoby dwuznaczne.
+- **Zakres Stopu jest napisany wprost** pod przyciskami
+  (`job.stop_note_single` / `job.stop_note_series`) — przy „Update all" Stop
+  kończy cały przebieg, a nie bieżącą pozycję.
+- **Jedno zadanie naraz.** `state.jobBusy` + `claimJob()` odrzucają start
+  drugiego. Backend puszczałby oba (`registry.run` odpala wątek od ręki), ale
+  dwa zadania to podwójny ruch do tego samego serwisu — każde buduje własny
+  `Fetcher` z własnym throttlingiem — a jedna para Pause/Stop steruje tylko
+  jednym `state.jobId`.
+
+Zdarzenia, na których wisi panel: `entry_started` (tytuł), `update_started`
+(`new_chapters` — rozmiar paska), `chapter_downloaded` (`index`/`total`),
+`entry_finished` (`status`), oraz `bulk_started`/`bulk_progress`
+(`index`/`total`/`title`) przy serii. Testów frontendowych w projekcie nie ma,
+więc ten kontrakt pilnuje `tests/test_library_progress.py` po stronie serwera.
+
 ## Scheduler automatycznych aktualizacji
 
 `app/scheduler.py` — jedno zadanie asyncio startowane z `lifespan` FastAPI.
@@ -375,6 +414,23 @@ Rzeczy, które **już raz po cichu zepsuły wynik**. Nie cofać.
   `docker-compose.yml` wymuszał `${WNE_MAX_CHAPTERS:-300}`. Zmieniając
   domyślną wartość, sprawdź: `app/config.py`, `docker-compose.yml`,
   `deploy/*.yml` i `.env.example`.
+- **…a czwartym miejscem jest zbudowany obraz.** Ta sama zmiana wróciła drugi
+  raz: kod i wszystkie pliki compose miały już `0`, ale obraz zbudowany
+  wcześniej niósł zapieczone `max_chapters = 300` w swoim `config.py`, więc
+  `docker run` bez zmiennych (a tak startuje CasaOS) dalej ucinał na 300.
+  Diagnoza: `docker run --rm --entrypoint python <obraz> -c "from app.config
+  import Settings; print(Settings().max_chapters)"` — pyta obrazu, nie repo.
+  Po zmianie domyślnej wartości trzeba **przebudować obraz**, a już
+  zainstalowana aplikacja w CasaOS trzyma własną kopię compose'a i nie
+  zauważy poprawki w repo, dopóki się jej nie zaktualizuje.
+- **Reguła autora z `display` bije `[hidden]`.** `.novel { display: flex }`
+  i `.progress { display: flex }` sprawiały, że elementy z atrybutem `hidden`
+  **i tak się rysowały** — pusta karta powieści i pusty pasek postępu pod
+  panelem zadania. Arkusz autora ma pierwszeństwo przed arkuszem przeglądarki
+  niezależnie od specyficzności, a cały UI opiera się na przełączaniu
+  `hidden`. W `styles.css` jest globalne `[hidden] { display: none !important }`
+  — nie usuwać przy dodawaniu nowych reguł `display`. Błąd był niewidoczny,
+  dopóki pasek siedział w ukrytej karcie: ukryty rodzic go maskował.
 - **Statyki bez `Cache-Control` = użytkownik siedzi na starym froncie.**
   Bez tego nagłówka przeglądarka sama wymyśla okres świeżości i po
   aktualizacji potrafi dalej serwować stary `app.js` — wygląda to jak zepsute

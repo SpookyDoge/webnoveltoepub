@@ -8,104 +8,101 @@ Wklejasz adres powieści, przeglądasz wykryte rozdziały, pobierasz EPUB-a.
 
 ## Szybki start
 
-```bash
-git clone https://github.com/SpookyDoge/webnoveltoepub.git
-cd webnoveltoepub
-docker compose up --build
+Zapisz to jako `docker-compose.yml` i odpal `docker compose up -d`:
+
+```yaml
+services:
+  webnoveltoepub:
+    image: ghcr.io/spookydoge/webnoveltoepub:latest
+    container_name: webnoveltoepub
+    ports:
+      - "8000:8000"
+    environment:
+      WNE_SAVE_TO_DISK: "true"
+    volumes:
+      - ./output:/app/output
+    restart: unless-stopped
 ```
 
-Wejdź na <http://localhost:8000> i wklej adres powieści. Rozdziały pojawiają się
-na liście w miarę wykrywania, a konwersja pokazuje pasek postępu na żywo. Każda
-przekonwertowana powieść zapisuje się w zakładce **Biblioteka**, gdzie jednym
-kliknięciem dociągniesz rozdziały wydane od tamtego czasu — patrz
-[Biblioteka](#biblioteka). To wszystko: domyślny obraz waży ~200 MB i nie
-wymaga żadnej konfiguracji.
+Potem wejdź na <http://localhost:8000> i wklej adres powieści. Rozdziały
+pojawiają się w miarę wykrywania, a konwersja pokazuje pasek postępu na żywo.
+Domyślny obraz waży ~200 MB i nie wymaga żadnej konfiguracji.
 
-Interaktywna dokumentacja API (gdybyś wolał to oskryptować) jest pod
-<http://localhost:8000/docs>. Dotychczasowe `/api/preview` i `/api/convert`
-działają bez zmian; interfejs korzysta z wariantów zadaniowych
-(`/api/jobs/*`) ze strumieniem postępu przez SSE.
+> Gotowy obraz publikuje się przy każdym tagu release'owym. Do czasu pierwszego
+> wydania zbuduj go sam:
+>
+> ```bash
+> git clone https://github.com/SpookyDoge/webnoveltoepub.git
+> cd webnoveltoepub && docker compose up --build
+> ```
 
-**Nie chcesz Dockera?** Jest jednoplikowa wersja .exe dla Windows — pobierasz,
-uruchamiasz i aplikacja otwiera się w przeglądarce. Szczegóły w sekcji
-[Windows (.exe, bez Dockera)](#windows-exe-bez-dockera).
+Nie chcesz Dockera? Patrz [Windows (.exe)](#windows-exe). Interaktywna
+dokumentacja API jest pod `/docs`.
 
 ## Wspierane serwisy
 
-| Serwis | Uwagi |
-| ------ | ----- |
+| Serwis | Co wkleić |
+| ------ | --------- |
 | [RoyalRoad](https://www.royalroad.com) | strona powieści, np. `/fiction/12345/slug` |
 | [FreeWebNovel](https://freewebnovel.com) | strona powieści, np. `/novel/slug` |
 
-Wklejaj link do **strony głównej powieści** (tej ze spisem rozdziałów), a nie do
-pojedynczego rozdziału — choć adresy rozdziałów i tak są normalizowane
-automatycznie.
-
-Brakuje jakiegoś serwisu? Zajrzyj do sekcji [Rozwój projektu](#rozwój-projektu)
-— jeden serwis to jeden plik.
+Wklejaj stronę główną powieści (tę ze spisem rozdziałów); adresy rozdziałów są
+normalizowane automatycznie. Brakuje serwisu? Jeden serwis to jeden plik — patrz
+[Rozwój projektu](#rozwój-projektu).
 
 ## Biblioteka
 
-Zakładka **Biblioteka** pokazuje każdą przekonwertowaną powieść: okładkę, liczbę
-rozdziałów i datę ostatniej aktualizacji.
+Zakładka **Biblioteka** pokazuje każdą przekonwertowaną powieść.
 
 - **Aktualizuj** pobiera wyłącznie rozdziały, których zapisany EPUB jeszcze nie
-  ma, i dopisuje je do istniejącego pliku. Powieść pobrana do rozdziału 200
-  kosztuje 3 żądania, żeby dobić do 203 — nie 203.
-- **Aktualizuj wszystkie** przechodzi całą bibliotekę z przerwami między
-  powieściami i raportuje, co zaktualizowano, co było już aktualne, a co
-  padło. Jeden niedostępny serwis nie zatrzymuje reszty.
-- **Pobierz** oddaje zapisany EPUB, więc biblioteka jest użyteczna bez
-  ponownej konwersji.
-- **Usuń** kasuje wpis i pyta, czy skasować także plik EPUB.
+  ma, i dopisuje je. Powieść pobrana do rozdziału 200 kosztuje 3 żądania, żeby
+  dobić do 203 — nie 203.
+- **Aktualizuj wszystkie** przechodzi całą bibliotekę i raportuje, co się
+  zmieniło. Jeden niedostępny serwis nie zatrzymuje reszty.
+- **Pobierz** oddaje zapisany EPUB, **Usuń** kasuje wpis i pyta o plik.
 - **Importuj z WebToEpub** wczytuje bibliotekę wyeksportowaną z rozszerzenia
-  przeglądarkowego — zarówno eksport `.zip`, jak i starszy `.json`. EPUB-y są
-  kopiowane i od tej pory można je aktualizować jak każdy inny wpis.
+  przeglądarkowego (`.zip` albo starszy `.json`). EPUB-y są kopiowane i od tej
+  pory można je aktualizować.
+
+Aktualizacje pokazują postęp w zakładce **Konwersja**, w tym samym panelu co
+zwykła konwersja — aplikacja tam przełącza, pokazując, która powieść (a przy
+„Aktualizuj wszystkie" — która pozycja przebiegu) jest właśnie obrabiana.
 
 Aktualizacja wymaga pliku na dysku, czyli `WNE_SAVE_TO_DISK=true` (domyślnie
-włączone w plikach dla CasaOS i w wersji `.exe`). Bez tego biblioteka nadal
-zapisuje, co konwertowałeś, ale takie wpisy są wyłącznie historią i wprost to
-komunikują.
+włączone w powyższym compose, w plikach dla CasaOS i w wersji `.exe`). Bez tego
+biblioteka nadal zapisuje, co konwertowałeś, ale takie wpisy to sama historia.
 
-Zaimportowane wpisy mają jedno zastrzeżenie: WebToEpub nie zapisuje liczby
-rozdziałów, więc jest ona wyliczana z samego EPUB-a i pokazywana po imporcie.
-Jeśli wygląda źle, popraw `chapter_count` w `library.json` przed pierwszą
-aktualizacją.
-
-Zakładamy, że listy rozdziałów rosną na końcu — tak działają web novele. Jeśli
-serwis przestawi albo usunie rozdziały, aktualizacja zgłosi, że lista się
-przesunęła, zamiast po cichu dopisać nie te.
+Dwa zastrzeżenia: zakładamy, że listy rozdziałów rosną na końcu — jeśli serwis
+je przestawi, aktualizacja to zgłosi, zamiast po cichu dopisać nie te; a
+ponieważ WebToEpub nie zapisuje liczby rozdziałów, wpisy z importu dostają ją
+wyliczoną z samego EPUB-a — popraw `chapter_count` w `library.json`, jeśli
+wygląda źle.
 
 ## Automatyczne sprawdzanie
 
 **Domyślnie wyłączone** — nic nie łączy się z internetem, dopóki sam o to nie
 poprosisz. Włączysz je w zakładce **Ustawienia**, gdzie wybierzesz, co ile
-sprawdzać całą bibliotekę (najczęściej co godzinę, bo web novele publikują co
-najwyżej kilka rozdziałów dziennie) oraz czy sprawdzać krótko po starcie
-aplikacji. Ta sama zakładka pokazuje, kiedy było ostatnie sprawdzenie, kiedy
-wypada następne, i log 20 ostatnich przebiegów.
+sprawdzać bibliotekę (najczęściej co godzinę) i czy sprawdzać krótko po starcie.
+Zakładka pokazuje ostatni i następny przebieg oraz log 20 ostatnich. Zmiany
+działają od razu, bez restartu.
 
-Zmiany działają od razu — bez restartu.
+> Pod Dockerem aplikacja chodzi non-stop, więc harmonogram naprawdę działa.
+> W wersji `.exe` aplikacja żyje tylko przy otwartym oknie, więc odstęp liczony
+> w godzinach rzadko zdąży zadziałać.
 
-> Pod Dockerem i CasaOS aplikacja chodzi non-stop, więc harmonogram naprawdę
-> działa w tle. W wersji `.exe` dla Windows aplikacja żyje tylko wtedy, gdy jej
-> okno jest otwarte, więc odstęp liczony w godzinach rzadko zdąży zadziałać —
-> zakładka Ustawienia też o tym informuje.
+## Pauza i zatrzymanie
 
-## Przerywanie długiej konwersji
-
-Długą konwersję można wstrzymać albo zatrzymać przy pasku postępu i **nic z
-tego, co już pobrane, nie przepada**. Zatrzymanie kończy rozdział będący w
-locie, po czym składa poprawny — choć krótszy — EPUB z tego, co dotarło, i
-zapisuje go w bibliotece z właściwą liczbą rozdziałów. Późniejszy **Update**
-podejmuje dokładnie od tego miejsca. Pauza po prostu czeka, a Wznów kontynuuje
-bez pobierania czegokolwiek ponownie. Przy **Aktualizuj wszystkie** Stop kończy
-całą serię, zachowując każdą już odświeżoną powieść.
+Długi przebieg można wstrzymać albo zatrzymać przy pasku postępu i **nic z tego,
+co już pobrane, nie przepada**. Zatrzymanie domyka rozdział w locie, po czym
+składa poprawny — choć krótszy — EPUB i zapisuje go z właściwą liczbą
+rozdziałów, więc późniejszy **Update** podejmuje dokładnie stamtąd. Przy
+„Aktualizuj wszystkie" Stop kończy cały przebieg, zachowując każdą już
+odświeżoną powieść.
 
 ## Konfiguracja
 
-Wszystko jest opcjonalne. Skopiuj `.env.example` do `.env` albo ustaw zmienne
-w swoim pliku compose.
+Wszystko opcjonalne. Skopiuj `.env.example` do `.env` albo ustaw zmienne w swoim
+pliku compose.
 
 | Zmienna | Domyślnie | Znaczenie |
 | ------- | --------- | --------- |
@@ -117,84 +114,57 @@ w swoim pliku compose.
 
 Język interfejsu jest wykrywany z przeglądarki i można go przełączyć w każdej
 chwili; dodanie kolejnego to wrzucenie pliku JSON do `web/locales/`. Pozostałe
-(w większości wewnętrzne) zmienne opisuje `.env.example`.
+zmienne opisuje `.env.example`.
 
-## Uruchamianie na CasaOS i innych panelach self-hosted
+## CasaOS i inne panele self-hosted
 
-Gotowe pliki compose leżą w katalogu [`deploy/`](deploy/):
+Gotowe pliki leżą w [`deploy/`](deploy/): wersja lekka
+[`docker-compose.casaos.yml`](deploy/docker-compose.casaos.yml) (**zacznij od
+niej**) oraz [`docker-compose.casaos-playwright.yml`](deploy/docker-compose.casaos-playwright.yml)
+z headless Chromium (~1.5 GB) dla serwisów renderujących rozdziały
+JavaScriptem. Żaden z obecnie wspieranych serwisów go nie wymaga.
 
-| Plik | Co dostajesz |
-| ---- | ------------ |
-| [`deploy/docker-compose.casaos.yml`](deploy/docker-compose.casaos.yml) | wersja lekka (~200 MB) — **zacznij od niej** |
-| [`deploy/docker-compose.casaos-playwright.yml`](deploy/docker-compose.casaos-playwright.yml) | z headless Chromium (~1.5 GB), dla serwisów renderujących rozdziały JavaScriptem |
+Skopiuj zawartość pliku → **App Store → Custom install** → wklej → **Install**.
+EPUB-y trafiają do `/DATA/AppData/webnoveltoepub/output`, widocznego w File
+Managerze CasaOS. W odróżnieniu od `docker-compose.yml` z roota, pliki te nie
+używają profili ani interpolacji `${VAR:-default}` — panele uruchamiają wklejony
+plik as-is.
 
-Wybierz wersję lekką, chyba że jakiś parser wprost potrzebuje przeglądarki —
-żaden z obecnie wspieranych serwisów jej nie wymaga.
+## Windows (.exe)
 
-**Instalacja:** skopiuj zawartość pliku → w CasaOS wejdź w **App Store →
-Custom install** → wklej → **Install**.
-
-Wygenerowane EPUB-y trafiają na hoście do `/DATA/AppData/webnoveltoepub/output`,
-więc znajdziesz je w **File Managerze** CasaOS pod tą ścieżką (niezależnie od
-pobierania ich wprost z przeglądarki).
-
-> **Uwaga:** te pliki pobierają gotowy obraz z
-> `ghcr.io/spookydoge/webnoveltoepub`, publikowany automatycznie przy każdym
-> tagu release'owym. Po wydaniu pierwszej wersji ten krok jest opcjonalny —
-> do tego czasu zbuduj obraz i otaguj go lokalnie, bo CasaOS nie buduje
-> obrazów ze źródeł:
->
-> ```bash
-> docker build --target runtime -t ghcr.io/spookydoge/webnoveltoepub:latest .
-> ```
-
-W odróżnieniu od `docker-compose.yml` z roota repo, pliki te nie używają
-profili ani interpolacji `${VAR:-default}` — panele zwykle uruchamiają wklejony
-plik as-is i potrafią zignorować osobny `.env`.
-
-## Windows (.exe, bez Dockera)
-
-Pobierz najnowszy `webnoveltoepub-windows-v*.exe` ze
+Pobierz `webnoveltoepub-windows-v*.exe` ze
 [strony Releases](https://github.com/SpookyDoge/webnoveltoepub/releases/latest)
-i kliknij dwukrotnie. Bez Pythona, bez Dockera, bez instalatora — otwiera się
-okno konsoli, aplikacja startuje na wolnym porcie lokalnym (domyślnie 8000)
-i przeglądarka otwiera się na tym adresie. Zamknięcie konsoli zatrzymuje
-aplikację.
-
-Wygenerowane EPUB-y trafiają do folderu `output` obok pliku `.exe`, niezależnie
-od zwykłego pobrania w przeglądarce.
+i kliknij dwukrotnie. Bez Pythona, bez Dockera, bez instalatora — aplikacja
+startuje na wolnym porcie lokalnym i otwiera przeglądarkę. EPUB-y trafiają do
+folderu `output` obok pliku `.exe`.
 
 > **Ostrzeżenie SmartScreen przy pierwszym uruchomieniu.** Plik nie jest
-> podpisany certyfikatem code-signing — certyfikat kosztuje co roku, co trudno
-> uzasadnić przy niekomercyjnym projekcie open source. Windows pokaże więc
-> niebieski ekran „Windows protected your PC" z informacją o nieznanym wydawcy.
-> Kliknij **More info** → **Run anyway**. To normalne; jeśli wolisz tego
-> uniknąć, użyj wersji Docker albo zbuduj `.exe` samodzielnie:
+> podpisany certyfikatem (certyfikat kosztuje co roku, co trudno uzasadnić przy
+> projekcie niekomercyjnym), więc Windows ostrzega o nieznanym wydawcy: **More
+> info** → **Run anyway**. Żeby tego uniknąć, użyj wersji Docker albo zbuduj
+> `.exe` samodzielnie:
 >
 > ```bash
 > pip install -r requirements-build.txt
 > pyinstaller build/pyinstaller.spec --noconfirm
 > ```
 
-**Ograniczenie:** tryb ciężki (renderowanie JavaScriptu) jest w tej wersji
-niedostępny — Chromium waży ~300 MB i dołączenie go rozdęłoby 20-megabajtowy
-plik do pobrania. Gdyby jakiś serwis go wymagał, UI to komunikuje i odsyła do
-wersji Docker. Żaden z obecnie wspieranych serwisów go nie potrzebuje.
+**Ograniczenie:** renderowanie JavaScriptu jest w tej wersji niedostępne —
+Chromium (~300 MB) rozdęłoby 20-megabajtowy plik. UI to komunikuje i odsyła do
+wersji Docker, gdyby jakiś serwis tego wymagał.
 
 ## Rozwój projektu
 
 Kontrybucje są mile widziane, zwłaszcza nowe parsery — każdy wspierany serwis to
 pojedynczy, samorejestrujący się plik w `app/parsers/`, więc dodanie kolejnego
-nie dotyka niczego poza nim. Testy odpalasz przez `pytest`, linter przez
-`ruff check app tests`; testy działają w pełni offline, więc CI nie puka do
-żadnego żywego serwisu.
+nie dotyka niczego poza nim. Odpal `pytest` i `ruff check app tests`; testy
+działają w pełni offline, więc CI nie puka do żadnego żywego serwisu.
 
 Architektura, instrukcja dodawania parsera krok po kroku, konwencje i znane
 pułapki są w **[CLAUDE.md](CLAUDE.md)** — przeczytaj przed pierwszym PR-em.
-
-Kontrybucje wspierane przez AI (np. [Claude Code](https://claude.com/claude-code))
-są mile widziane; `CLAUDE.md` jest jednocześnie briefem projektu, który możesz
-podać agentowi. Sprawdź tylko, co wysyłasz, i upewnij się, że testy przechodzą.
+Kontrybucje wspierane przez AI są mile widziane; `CLAUDE.md` jest jednocześnie
+briefem, który możesz podać agentowi. Sprawdź tylko, co wysyłasz, i upewnij się,
+że testy przechodzą.
 
 ## Odpowiedzialne używanie
 

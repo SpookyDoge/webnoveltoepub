@@ -49,6 +49,27 @@
       <p id="error-message"></p>
     </section>
 
+    <!-- One progress panel for every long operation: conversion, a single
+         library update and a whole-library run. It sits outside the chapter
+         card on purpose - a library update has no chapter list to show, so
+         anything nested in that card would be invisible. -->
+    <section id="job-card" class="card job-card" hidden>
+      <p id="job-kind" class="job-kind"></p>
+      <h2 id="job-title" class="job-title"></h2>
+      <p id="job-series" class="meta" hidden></p>
+
+      <div id="job-progress" class="progress" hidden>
+        <progress id="job-bar" value="0" max="100"></progress>
+        <span id="job-counter" class="badge subtle"></span>
+        <button type="button" id="job-pause" data-i18n="job.pause"></button>
+        <button type="button" id="job-stop" data-i18n="job.stop"></button>
+      </div>
+
+      <p id="job-stop-note" class="hint" hidden></p>
+      <p id="status-message" class="status" hidden></p>
+      <a id="job-download" class="button-link" hidden download></a>
+    </section>
+
     <section id="novel-card" class="card novel" hidden>
       <img id="novel-cover" alt="" hidden>
       <div class="novel-info">
@@ -99,14 +120,6 @@
       </fieldset>
 
       <button type="button" id="convert-button" class="primary" data-i18n="convert.button"></button>
-
-      <div id="convert-progress" class="progress" hidden>
-        <progress id="convert-bar" value="0" max="100"></progress>
-        <span id="convert-counter" class="badge subtle"></span>
-        <button type="button" id="convert-pause" data-i18n="job.pause"></button>
-        <button type="button" id="convert-stop" data-i18n="job.stop"></button>
-      </div>
-      <p id="status-message" class="status" hidden></p>
     </section>
     </section>
 
@@ -124,12 +137,9 @@
           <input type="file" id="import-file" accept=".zip,.json" hidden>
         </div>
         <p class="hint" data-i18n="library.import_hint"></p>
-        <div id="library-progress" class="progress" hidden>
-          <progress id="library-bar" value="0" max="100"></progress>
-          <span id="library-counter" class="badge subtle"></span>
-          <button type="button" id="library-pause" data-i18n="job.pause"></button>
-          <button type="button" id="library-stop" data-i18n="job.stop"></button>
-        </div>
+        <!-- No progress bar here on purpose: updates report into the shared
+             job panel on the Convert tab, which is where every long operation
+             is shown. -->
         <p id="library-status" class="status" hidden></p>
         <p id="library-empty" class="hint" data-i18n="library.empty" hidden></p>
         <ul id="library-list" class="library-list"></ul>
