@@ -220,3 +220,15 @@ a { color: var(--accent); }
 .library-info .meta { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; }
 .library-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
 .warn-text { color: var(--muted); font-style: italic; }
+
+.button-link {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.button-link:hover { border-color: var(--accent); }
+.button-link[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }

@@ -132,6 +132,24 @@ class LibraryUpdateAllResponse(BaseModel):
     failed: int
 
 
+class LibraryImportResult(BaseModel):
+    """One novel taken from a WebToEpub export."""
+
+    title: str
+    source_url: str
+    #: "imported" | "skipped" | "error"
+    status: str
+    chapter_count: int = 0
+    detail: str | None = None
+
+
+class LibraryImportResponse(BaseModel):
+    results: list[LibraryImportResult]
+    imported: int
+    skipped: int
+    failed: int
+
+
 # --------------------------------------------------------------------------
 # Automatic updates
 # --------------------------------------------------------------------------

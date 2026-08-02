@@ -126,6 +126,8 @@ const el = {
   exeNote: document.getElementById("exe-note"),
   runLog: document.getElementById("run-log"),
   historyEmpty: document.getElementById("history-empty"),
+  importButton: document.getElementById("import-button"),
+  importFile: document.getElementById("import-file"),
 };
 
 // ---------------------------------------------------------------------------
@@ -278,6 +280,7 @@ function errorKeyFromDetail(detail) {
     // for it, and it needs its own hint rather than "site unreachable".
     "playwright_unavailable",
     "stopped_empty",
+    "import_error",
     "fetch_error",
   ];
   const match = known.find((key) => String(detail || "").startsWith(key));
@@ -515,6 +518,17 @@ function renderLibrary() {
       const actions = document.createElement("div");
       actions.className = "library-actions";
 
+      const download = document.createElement("a");
+      download.className = "button-link";
+      download.textContent = t("library.download");
+      if (entry.file_path) {
+        download.href = `/api/library/${entry.id}/download`;
+        // The server sets the file name; this just marks it as a download.
+        download.setAttribute("download", "");
+      } else {
+        download.setAttribute("aria-disabled", "true");
+      }
+
       const update = document.createElement("button");
       update.type = "button";
       update.textContent = t("library.update");
@@ -526,7 +540,7 @@ function renderLibrary() {
       remove.textContent = t("library.remove");
       remove.addEventListener("click", () => removeEntry(entry));
 
-      actions.append(update, remove);
+      actions.append(download, update, remove);
       li.append(info, actions);
       return li;
     })
@@ -595,6 +609,37 @@ function libraryStatusKey(result) {
   if (result.status === "up_to_date") return "library.up_to_date";
   if (result.status === "no_file") return "library.no_file";
   return "library.update_failed";
+}
+
+/** Imports a library exported from the WebToEpub browser extension. */
+async function importLibrary(file) {
+  if (!file) return;
+  clearError();
+  el.importButton.disabled = true;
+  setLibraryStatus("library.importing");
+
+  try {
+    const response = await fetch("/api/library/import", {
+      method: "POST",
+      // Sent as a raw body, which is what the endpoint expects.
+      body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      showError(errorKeyFromDetail(payload.detail));
+      setLibraryStatus("library.import_failed");
+      return;
+    }
+    setLibraryStatus("library.imported", payload);
+    loadLibrary();
+  } catch (error) {
+    showJobError(error);
+    setLibraryStatus("library.import_failed");
+  } finally {
+    el.importButton.disabled = false;
+    // Clear it so picking the same file twice fires a change event again.
+    el.importFile.value = "";
+  }
 }
 
 async function removeEntry(entry) {
@@ -822,6 +867,8 @@ async function init() {
   el.libraryRefresh.addEventListener("click", loadLibrary);
   el.tabSettings.addEventListener("click", () => selectTab("settings"));
   el.saveSettings.addEventListener("click", saveSettings);
+  el.importButton.addEventListener("click", () => el.importFile.click());
+  el.importFile.addEventListener("change", (event) => importLibrary(event.target.files[0]));
   el.autoUpdateEnabled.addEventListener("change", () => {
     el.intervalRow.hidden = !el.autoUpdateEnabled.checked;
   });

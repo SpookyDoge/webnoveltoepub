@@ -55,12 +55,22 @@ rozdziałów i datę ostatniej aktualizacji.
 - **Aktualizuj wszystkie** przechodzi całą bibliotekę z przerwami między
   powieściami i raportuje, co zaktualizowano, co było już aktualne, a co
   padło. Jeden niedostępny serwis nie zatrzymuje reszty.
+- **Pobierz** oddaje zapisany EPUB, więc biblioteka jest użyteczna bez
+  ponownej konwersji.
 - **Usuń** kasuje wpis i pyta, czy skasować także plik EPUB.
+- **Importuj z WebToEpub** wczytuje bibliotekę wyeksportowaną z rozszerzenia
+  przeglądarkowego — zarówno eksport `.zip`, jak i starszy `.json`. EPUB-y są
+  kopiowane i od tej pory można je aktualizować jak każdy inny wpis.
 
 Aktualizacja wymaga pliku na dysku, czyli `WNE_SAVE_TO_DISK=true` (domyślnie
 włączone w plikach dla CasaOS i w wersji `.exe`). Bez tego biblioteka nadal
 zapisuje, co konwertowałeś, ale takie wpisy są wyłącznie historią i wprost to
 komunikują.
+
+Zaimportowane wpisy mają jedno zastrzeżenie: WebToEpub nie zapisuje liczby
+rozdziałów, więc jest ona wyliczana z samego EPUB-a i pokazywana po imporcie.
+Jeśli wygląda źle, popraw `chapter_count` w `library.json` przed pierwszą
+aktualizacją.
 
 Zakładamy, że listy rozdziałów rosną na końcu — tak działają web novele. Jeśli
 serwis przestawi albo usunie rozdziały, aktualizacja zgłosi, że lista się

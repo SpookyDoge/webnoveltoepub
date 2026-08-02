@@ -9,7 +9,7 @@ services:
     ports:
       - "${WNE_PORT:-8000}:8000"
     environment:
-      WNE_MAX_CHAPTERS: "${WNE_MAX_CHAPTERS:-300}"
+      WNE_MAX_CHAPTERS: "${WNE_MAX_CHAPTERS:-0}"
       WNE_REQUEST_DELAY: "${WNE_REQUEST_DELAY:-0.75}"
       WNE_DEFAULT_LANGUAGE: "${WNE_DEFAULT_LANGUAGE:-en}"
       WNE_LOG_LEVEL: "${WNE_LOG_LEVEL:-INFO}"
@@ -27,7 +27,7 @@ services:
       - "${WNE_PLAYWRIGHT_PORT:-8001}:8000"
     environment:
       WNE_PLAYWRIGHT_ENABLED: "true"
-      WNE_MAX_CHAPTERS: "${WNE_MAX_CHAPTERS:-300}"
+      WNE_MAX_CHAPTERS: "${WNE_MAX_CHAPTERS:-0}"
       WNE_REQUEST_DELAY: "${WNE_REQUEST_DELAY:-1.5}"
       WNE_LOG_LEVEL: "${WNE_LOG_LEVEL:-INFO}"
     # Chromium needs more shared memory than the default 64 MB.

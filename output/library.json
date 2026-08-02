@@ -13,7 +13,21 @@
       "chapter_count": 2,
       "last_chapter_url": "https://www.royalroad.com/c/2",
       "created_at": "2026-08-02T11:41:44+00:00",
-      "updated_at": "2026-08-02T12:42:10+00:00"
+      "updated_at": "2026-08-02T16:43:41+00:00"
+    },
+    {
+      "id": "a05a0ee9-1bd2-56f1-9dc0-aaa601eb685c",
+      "source_url": "https://www.royalroad.com/fiction/1/imported-novel",
+      "parser": "royalroad",
+      "title": "Imported Novel",
+      "author": "Unknown",
+      "language": "en",
+      "cover_url": null,
+      "file_path": "output\\imported-novel.epub",
+      "chapter_count": 2,
+      "last_chapter_url": null,
+      "created_at": "2026-08-02T16:43:43+00:00",
+      "updated_at": "2026-08-02T16:43:43+00:00"
     }
   ]
 }

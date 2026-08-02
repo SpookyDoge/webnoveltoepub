@@ -14,12 +14,14 @@ from pathlib import Path
 from .config import Settings, get_settings
 from .epub_builder import append_chapters, build_epub, slugify
 from .fetcher import Fetcher, FetchError
-from .library import Library, utc_now
+from .library import Library, entry_id, utc_now
 from .models import (
     ChapterContent,
     ChapterRef,
     ConvertRequest,
     LibraryEntry,
+    LibraryImportResponse,
+    LibraryImportResult,
     LibraryUpdateAllResponse,
     LibraryUpdateResult,
     NovelMetadata,
@@ -27,6 +29,7 @@ from .models import (
 )
 from .parsers import BaseParser, ParserError, get_parser_class
 from .progress import Emitter, JobControl
+from .webtoepub import parse_export
 
 log = logging.getLogger(__name__)
 
@@ -312,6 +315,86 @@ def record_in_library(
         last_chapter_url=last.url if last else None,
     )
     return Library(settings).upsert(entry)
+
+
+def import_webtoepub_library(
+    data: bytes,
+    settings: Settings | None = None,
+) -> LibraryImportResponse:
+    """Adds novels from a WebToEpub export into the library.
+
+    The EPUBs are written to the output directory regardless of
+    WNE_SAVE_TO_DISK: an import with nowhere to put the files would produce
+    entries that can never be updated, which is the opposite of the point.
+    """
+    settings = settings or get_settings()
+    novels = parse_export(data)
+    library = Library(settings)
+    known = {entry.id for entry in library.load()}
+
+    results: list[LibraryImportResult] = []
+    for novel in novels:
+        key = entry_id(novel.source_url)
+        if key in known:
+            # Never overwrite a novel this app already manages - its own entry
+            # knows the real chapter count, the imported one only guesses.
+            results.append(
+                LibraryImportResult(
+                    title=novel.title, source_url=novel.source_url, status="skipped"
+                )
+            )
+            continue
+
+        try:
+            settings.output_dir.mkdir(parents=True, exist_ok=True)
+            target = _free_path(settings.output_dir / f"{slugify(novel.title)}.epub")
+            target.write_bytes(novel.epub_bytes)
+        except OSError as exc:
+            log.warning("Could not write the imported EPUB for %s: %s", novel.title, exc)
+            results.append(
+                LibraryImportResult(
+                    title=novel.title,
+                    source_url=novel.source_url,
+                    status="error",
+                    detail=str(exc),
+                )
+            )
+            continue
+
+        parser_cls = get_parser_class(novel.source_url)
+        library.upsert(
+            Library.build_entry(
+                source_url=novel.source_url,
+                parser_name=parser_cls.name if parser_cls else "unknown",
+                title=novel.title,
+                author="Unknown",
+                language="en",
+                cover_url=None,
+                file_path=target,
+                chapter_count=novel.chapter_count,
+                # WebToEpub does not record it, so an update falls back to
+                # slicing by count alone (no shift detection for this one).
+                last_chapter_url=None,
+            )
+        )
+        known.add(key)
+        results.append(
+            LibraryImportResult(
+                title=novel.title,
+                source_url=novel.source_url,
+                status="imported",
+                chapter_count=novel.chapter_count,
+                # Flag the ones we cannot update, so the summary is honest.
+                detail=None if parser_cls else "unsupported_site",
+            )
+        )
+
+    return LibraryImportResponse(
+        results=results,
+        imported=sum(1 for r in results if r.status == "imported"),
+        skipped=sum(1 for r in results if r.status == "skipped"),
+        failed=sum(1 for r in results if r.status == "error"),
+    )
 
 
 def update_entry(

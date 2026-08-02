@@ -224,3 +224,7 @@ __marimo__/
 !build/
 build/*
 !build/pyinstaller.spec
+
+# Generated EPUBs plus the library/settings files that live beside them
+# (WNE_OUTPUT_DIR) - user data, never part of the repo.
+output/

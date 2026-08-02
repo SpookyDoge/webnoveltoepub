@@ -177,6 +177,23 @@ unicode, got 'NoneType'`), a nowym elementom nie nadaje `id`. Dlatego
 `append_chapters` odbudowuje TOC z faktycznych dokumentów (odzyskując tytuły
 z `Link`ów) i jawnie ustawia `uid` nowych rozdziałów. Nie upraszczać.
 
+### Import z WebToEpub
+
+`app/webtoepub.py` czyta oba formaty eksportu rozszerzenia: ZIP w wersji 2
+(`Library/<i>/{LibStoryURL,LibFilename,LibEpub,...}` + `LibraryVersion.txt`)
+oraz starszy JSON z tablicą `Library`. `LibEpub` to data URI z base64 —
+Firefox zapisuje `application/octet-stream` zamiast `application/epub+zip`,
+więc prefiks jest obcinany regexem, nie porównaniem.
+
+- **Import zapisuje pliki niezależnie od `WNE_SAVE_TO_DISK`** — wpis bez pliku
+  nigdy nie dałby się zaktualizować, czyli mijałby się z celem importu.
+- **Nie nadpisuje powieści, którą aplikacja już zna** (status `skipped`):
+  własny wpis zna prawdziwą liczbę rozdziałów, importowany tylko ją zgaduje.
+- **Liczba rozdziałów jest szacowana** z dokumentów w spine EPUB-a, z
+  odsianiem stron typu information/cover/toc — WebToEpub jej nie zapisuje.
+  Dlatego wynik wraca do UI, zamiast być stosowany po cichu: od tej liczby
+  zależy, od którego rozdziału ruszy pierwszy „Update".
+
 ## Progres na żywo (SSE)
 
 `app/progress.py` — **jeden** mechanizm dla wszystkich długich operacji:
@@ -353,6 +370,11 @@ Rzeczy, które **już raz po cichu zepsuły wynik**. Nie cofać.
 - **Ten sam `ul.ul-list5` bywa w kilku blokach.** Na FreeWebNovel blok
   „najnowsze rozdziały" wstrzykiwał rozdział #290 na początek listy. Zawężać się
   najpierw do kontenera (`#idData`), potem szukać linków.
+- **Domyślne wartości ENV są w trzech miejscach naraz.** `WNE_MAX_CHAPTERS`
+  zmienione w `config.py` nadal działało jak wcześniej, bo root
+  `docker-compose.yml` wymuszał `${WNE_MAX_CHAPTERS:-300}`. Zmieniając
+  domyślną wartość, sprawdź: `app/config.py`, `docker-compose.yml`,
+  `deploy/*.yml` i `.env.example`.
 - **Statyki bez `Cache-Control` = użytkownik siedzi na starym froncie.**
   Bez tego nagłówka przeglądarka sama wymyśla okres świeżości i po
   aktualizacji potrafi dalej serwować stary `app.js` — wygląda to jak zepsute

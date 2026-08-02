@@ -120,7 +120,10 @@
         <div class="chapter-controls">
           <button type="button" id="update-all" class="primary" data-i18n="library.update_all"></button>
           <button type="button" id="library-refresh" data-i18n="library.refresh"></button>
+          <button type="button" id="import-button" data-i18n="library.import"></button>
+          <input type="file" id="import-file" accept=".zip,.json" hidden>
         </div>
+        <p class="hint" data-i18n="library.import_hint"></p>
         <div id="library-progress" class="progress" hidden>
           <progress id="library-bar" value="0" max="100"></progress>
           <span id="library-counter" class="badge subtle"></span>

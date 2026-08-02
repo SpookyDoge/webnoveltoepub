@@ -91,5 +91,12 @@
   "settings.history_empty": "Żadne automatyczne sprawdzenie jeszcze się nie odbyło.",
   "settings.run_summary": "sprawdzono {checked} · zaktualizowano {updated} · błędów {failed}",
   "error.stopped_empty": "Zatrzymano, zanim pobrał się pierwszy rozdział — nic nie zostało zapisane.",
-  "job.stopped_empty": "Zatrzymano przed pobraniem czegokolwiek."
+  "job.stopped_empty": "Zatrzymano przed pobraniem czegokolwiek.",
+  "library.download": "Pobierz",
+  "library.import": "Importuj z WebToEpub",
+  "library.import_hint": "Wczytaj bibliotekę wyeksportowaną z rozszerzenia WebToEpub (.zip albo starszy .json). EPUB-y zostaną skopiowane i będzie je można aktualizować jak każdy inny wpis.",
+  "library.importing": "Importuję…",
+  "library.imported": "Zaimportowano {imported} powieści · {skipped} już znanych · {failed} nieudanych.",
+  "library.import_failed": "Import się nie powiódł.",
+  "error.import_error": "Ten plik nie jest eksportem z WebToEpub, który ta aplikacja potrafi odczytać."
 }

@@ -91,5 +91,12 @@
   "settings.history_empty": "No automatic check has run yet.",
   "settings.run_summary": "{checked} checked · {updated} updated · {failed} failed",
   "error.stopped_empty": "Stopped before any chapter was downloaded, so nothing was saved.",
-  "job.stopped_empty": "Stopped before anything was downloaded."
+  "job.stopped_empty": "Stopped before anything was downloaded.",
+  "library.download": "Download",
+  "library.import": "Import from WebToEpub",
+  "library.import_hint": "Bring in a library exported from the WebToEpub browser extension (.zip or the older .json). The EPUBs are copied in and can then be updated like any other entry.",
+  "library.importing": "Importing…",
+  "library.imported": "Imported {imported} novels · {skipped} already known · {failed} failed.",
+  "library.import_failed": "Import failed.",
+  "error.import_error": "That file is not a WebToEpub export this app can read."
 }

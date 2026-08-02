@@ -53,12 +53,22 @@ and when it was last refreshed.
 - **Update all** walks the whole library, pausing between novels, and reports
   what was updated, what was already current and what failed. One unreachable
   site does not stop the rest.
+- **Download** hands back the stored EPUB, so the library is useful without
+  re-converting anything.
 - **Remove** drops the entry and asks whether the EPUB file should go too.
+- **Import from WebToEpub** reads a library exported from the browser
+  extension — both the `.zip` export and the older `.json` one. The EPUBs are
+  copied in and can be updated from then on like any other entry.
 
 Updating needs the EPUB on disk, so it requires `WNE_SAVE_TO_DISK=true` (already
 the default in the CasaOS files and in the Windows `.exe`). Without it the
 library still records what you converted, but those entries are history only and
 say so.
+
+Imported entries carry one caveat: WebToEpub does not record how many chapters
+a book holds, so the count is worked out from the EPUB itself and reported back
+after the import. If it looks wrong, correct `chapter_count` in `library.json`
+before the first update.
 
 Chapter lists are assumed to grow at the end, which is how web novels work. If a
 site reorders or removes chapters, the update says the list shifted rather than

@@ -7,21 +7,24 @@ import logging
 import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import quote, urlparse
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, i18n
 from .config import WEB_DIR, get_settings
+from .epub_builder import slugify
 from .fetcher import FetchError, PlaywrightUnavailableError
 from .library import Library, SettingsStore
 from .models import (
     AppSettings,
     ConvertRequest,
     LibraryEntry,
+    LibraryImportResponse,
     ParserInfo,
     PreviewRequest,
     PreviewResponse,
@@ -35,10 +38,12 @@ from .service import (
     StoppedBeforeStartError,
     UnsupportedSiteError,
     convert,
+    import_webtoepub_library,
     preview,
     update_all,
     update_entry,
 )
+from .webtoepub import WebToEpubImportError
 
 log = logging.getLogger(__name__)
 settings = get_settings()
@@ -299,6 +304,52 @@ async def list_library() -> list[LibraryEntry]:
     entries = await asyncio.to_thread(Library(settings).load)
     # Most recently touched first - that is the one a user comes back to.
     return sorted(entries, key=lambda entry: entry.updated_at, reverse=True)
+
+
+@app.post("/api/library/import", response_model=LibraryImportResponse)
+async def import_library(request: Request) -> LibraryImportResponse:
+    """Imports a library exported from the WebToEpub browser extension.
+
+    Takes the file as a raw body rather than a multipart upload: it is one
+    file, and multipart would mean adding python-multipart to every build
+    including the .exe.
+    """
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty_upload")
+    try:
+        return await asyncio.to_thread(import_webtoepub_library, data, settings)
+    except WebToEpubImportError as exc:
+        raise HTTPException(status_code=422, detail=f"import_error: {exc}") from exc
+
+
+@app.get("/api/library/{entry_id}/download")
+async def download_library_entry(entry_id: str) -> Response:
+    """Serves the stored EPUB, so the library is useful without re-converting."""
+    entry = await asyncio.to_thread(Library(settings).get, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="unknown_entry")
+    if not entry.file_path:
+        # Converted with WNE_SAVE_TO_DISK off: the row is history, not a file.
+        raise HTTPException(status_code=409, detail="no_epub_on_disk")
+
+    path = Path(entry.file_path)
+    if not path.is_file():
+        # Moved or deleted behind our back - say which file is missing rather
+        # than handing back an empty download.
+        log.warning("Library entry %s points at a missing file: %s", entry.id, path)
+        raise HTTPException(status_code=410, detail="epub_file_missing")
+
+    file_name = path.name
+    disposition = (
+        f'attachment; filename="{slugify(entry.title)}.epub"; '
+        f"filename*=UTF-8''{quote(file_name)}"
+    )
+    return FileResponse(
+        path,
+        media_type="application/epub+zip",
+        headers={"Content-Disposition": disposition},
+    )
 
 
 @app.post("/api/library/update-all")
