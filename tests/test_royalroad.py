@@ -1,4 +1,4 @@
-"""Testy parsera RoyalRoad na syntetycznym HTML-u odwzorowujacym strukture strony."""
+"""RoyalRoad parser tests on synthetic HTML mirroring the site's structure."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def test_chapter_content_drops_css_hidden_trap(parser):
     assert "Pierwszy akapit" in content.html
     assert "Drugi akapit" in content.html
     assert "pulapka" not in content.html
-    # Notka autora jest poza div.chapter-content, wiec nie trafia do EPUB-a.
+    # The author's note lives outside div.chapter-content, so it never reaches the EPUB.
     assert "Notka autora" not in content.html
 
 

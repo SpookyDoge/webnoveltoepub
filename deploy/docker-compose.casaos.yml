@@ -1,15 +1,15 @@
-# webnoveltoepub - wersja lekka (requests + BeautifulSoup) dla CasaOS
-# i innych paneli self-hosted.
+# webnoveltoepub - lightweight variant (requests + BeautifulSoup) for CasaOS
+# and other self-hosted panels.
 #
-# CasaOS: App Store -> Custom install -> wklej cala zawartosc tego pliku -> Install
+# CasaOS: App Store -> Custom install -> paste this whole file -> Install
 #
-# Roznice wobec docker-compose.yml z roota repo:
-#   * image zamiast build - CasaOS nie buduje obrazow ze zrodel
-#   * bez profiles - CasaOS uruchamia caly plik na raz
-#   * wartosci wpisane wprost zamiast ${VAR:-default} - Custom install
-#     nie zawsze respektuje osobny plik .env
-#   * bind mount na /DATA/AppData/... - gotowe EPUB-y widac w File Managerze
-#   * zapis na dysk wlaczony (WNE_SAVE_TO_DISK)
+# Differences from the docker-compose.yml in the repo root:
+#   * image instead of build - CasaOS does not build images from source
+#   * no profiles - CasaOS runs the whole file at once
+#   * values written out instead of ${VAR:-default} - Custom install does
+#     not always respect a separate .env file
+#   * bind mount on /DATA/AppData/... - finished EPUBs show up in File Manager
+#   * saving to disk enabled (WNE_SAVE_TO_DISK)
 
 name: webnoveltoepub
 
@@ -29,9 +29,9 @@ services:
       WNE_LOG_LEVEL: "INFO"
     volumes:
       - /DATA/AppData/webnoveltoepub/output:/app/output
-    # Bind mount na /DATA nalezy do roota, a obraz domyslnie chodzi jako
-    # nie-root (uid 10001). Bez tego zapis EPUB-ow by sie nie udal, a CasaOS
-    # nie daje wygodnego sposobu na chown z poziomu UI.
+    # The bind mount under /DATA belongs to root, while the image runs as
+    # non-root (uid 10001) by default. Without this, writing EPUBs would fail,
+    # and CasaOS offers no convenient way to chown from its UI.
     user: "0:0"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
@@ -87,8 +87,8 @@ x-casaos:
   index: /
   port_map: "8000"
   scheme: http
-  # Uwaga: tips.custom MUSI byc zwyklym stringiem. Mapa lokalizacji (en_US: ...)
-  # wywala import bledem "Tips.Custom expected type 'string'".
+  # Careful: tips.custom MUST be a plain string. A locale map (en_US: ...)
+  # breaks the import with "Tips.Custom expected type 'string'".
   tips:
     custom: >-
       Generated EPUB files are saved to /DATA/AppData/webnoveltoepub/output

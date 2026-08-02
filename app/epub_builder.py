@@ -1,4 +1,4 @@
-"""Skladanie EPUB-a z metadanych + rozdzialow (ebooklib)."""
+"""Assembling an EPUB from metadata + chapters (ebooklib)."""
 
 from __future__ import annotations
 
@@ -29,13 +29,13 @@ def build_epub(
     chapters: list[ChapterContent],
     cover: CoverImage | None = None,
 ) -> bytes:
-    """Zwraca gotowy plik EPUB jako bajty."""
+    """Returns the finished EPUB file as bytes."""
     if not chapters:
-        raise ValueError("Nie mozna zbudowac EPUB-a bez rozdzialow")
+        raise ValueError("Cannot build an EPUB with no chapters")
 
     book = epub.EpubBook()
-    # Deterministyczny identyfikator: ponowna konwersja tej samej powiesci daje
-    # ten sam UUID, wiec czytniki traktuja plik jako aktualizacje, nie nowa ksiazke.
+    # Deterministic identifier: re-converting the same novel yields the same
+    # UUID, so readers treat the file as an update rather than a new book.
     book.set_identifier(f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, metadata.source_url)}")
     book.set_title(metadata.title)
     book.set_language(metadata.language or "en")
@@ -85,15 +85,15 @@ def build_epub(
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
 
-    # ebooklib potrafi pisac tylko do sciezki na dysku.
+    # ebooklib can only write to a path on disk.
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "book.epub"
         epub.write_epub(str(out_path), book)
         return out_path.read_bytes()
 
 
-#: Znaki, ktore nie maja dekompozycji NFKD (nie sa "litera + diakryt"),
-#: wiec bez recznej mapy wyparowalyby przy konwersji na ASCII.
+#: Characters with no NFKD decomposition (they are not "letter + diacritic"),
+#: so without a manual map they would evaporate on the way to ASCII.
 _TRANSLITERATION = str.maketrans(
     {
         "ł": "l", "Ł": "L", "ø": "o", "Ø": "O", "đ": "d", "Đ": "D",
@@ -103,7 +103,7 @@ _TRANSLITERATION = str.maketrans(
 
 
 def slugify(value: str, *, fallback: str = "novel", max_length: int = 80) -> str:
-    """Nazwa pliku bezpieczna dla Windowsa, Linuksa i naglowka Content-Disposition."""
+    """A file name safe on Windows, on Linux and in a Content-Disposition header."""
     normalized = unicodedata.normalize("NFKD", value.translate(_TRANSLITERATION))
     ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^A-Za-z0-9]+", "-", ascii_only).strip("-").lower()

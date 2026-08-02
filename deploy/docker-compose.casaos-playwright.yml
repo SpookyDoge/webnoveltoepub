@@ -1,15 +1,15 @@
-# webnoveltoepub - wersja "ciezka" z Chromium (Playwright) dla CasaOS
-# i innych paneli self-hosted.
+# webnoveltoepub - "heavy" variant with Chromium (Playwright) for CasaOS
+# and other self-hosted panels.
 #
-# CasaOS: App Store -> Custom install -> wklej cala zawartosc tego pliku -> Install
+# CasaOS: App Store -> Custom install -> paste this whole file -> Install
 #
-# Samodzielny plik, nie profil - wklejasz go zamiast wersji lekkiej.
-# Potrzebny tylko wtedy, gdy dodasz parser serwisu renderujacego tresc
-# JavaScriptem. Obraz wazy ~1.5 GB (wersja lekka ~200 MB), wiec bez takiej
-# potrzeby wybierz docker-compose.casaos.yml.
+# A standalone file, not a profile - paste it instead of the lightweight one.
+# Only needed once you add a parser for a site that renders its content with
+# JavaScript. The image weighs ~1.5 GB (the lightweight one ~200 MB), so
+# without that need pick docker-compose.casaos.yml.
 #
-# Uwaga: obie wersje slucham na porcie 8000. Jesli chcesz miec je obok siebie,
-# zmien mapowanie portu hosta w jednej z nich (np. "8001:8000").
+# Careful: both variants listen on port 8000. To run them side by side, change
+# the host port mapping in one of them (e.g. "8001:8000").
 
 name: webnoveltoepub-playwright
 
@@ -25,15 +25,15 @@ services:
       WNE_SAVE_TO_DISK: "true"
       WNE_OUTPUT_DIR: "/app/output"
       WNE_MAX_CHAPTERS: "300"
-      # Renderowanie strony jest wolniejsze i drozsze dla serwisu - zwalniamy.
+      # Rendering a page is slower and costlier for the site - so we slow down.
       WNE_REQUEST_DELAY: "1.5"
       WNE_DEFAULT_LANGUAGE: "en"
       WNE_LOG_LEVEL: "INFO"
     volumes:
       - /DATA/AppData/webnoveltoepub/output:/app/output
-    # Jak w wersji lekkiej: bind mount na /DATA nalezy do roota.
+    # As in the lightweight variant: the bind mount under /DATA belongs to root.
     user: "0:0"
-    # Chromium wywraca sie na domyslnych 64 MB pamieci wspoldzielonej.
+    # Chromium falls over on the default 64 MB of shared memory.
     shm_size: "1gb"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
@@ -92,8 +92,8 @@ x-casaos:
   index: /
   port_map: "8000"
   scheme: http
-  # Uwaga: tips.custom MUSI byc zwyklym stringiem. Mapa lokalizacji (en_US: ...)
-  # wywala import bledem "Tips.Custom expected type 'string'".
+  # Careful: tips.custom MUST be a plain string. A locale map (en_US: ...)
+  # breaks the import with "Tips.Custom expected type 'string'".
   tips:
     custom: >-
       Generated EPUB files are saved to /DATA/AppData/webnoveltoepub/output

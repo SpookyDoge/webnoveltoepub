@@ -1,12 +1,12 @@
-"""Parser dla freewebnovel.com.
+"""Parser for freewebnovel.com.
 
-W przeciwienstwie do RoyalRoada strona nie osadza zadnego JSON-a z rozdzialami
-(sprawdzone: brak window.chapters, ld+json, __NEXT_DATA__) - jedynym zrodlem
-listy jest HTML. Za to metadane siedza w bogatym zestawie <meta og:novel:*>,
-ktory jest znacznie stabilniejszy niz selektory CSS, wiec to on jest zrodlem
-pierwszego wyboru.
+Unlike RoyalRoad, this site embeds no JSON with the chapters (verified: no
+window.chapters, no ld+json, no __NEXT_DATA__) - the HTML is the only source
+for the list. On the other hand the metadata lives in a rich set of
+<meta og:novel:*> tags, far more stable than CSS selectors, so that is the
+source of first choice.
 
-Lista rozdzialow jest paginowana po 40 pozycji przez ?page=N.
+The chapter list is paginated 40 entries at a time via ?page=N.
 """
 
 from __future__ import annotations
@@ -27,11 +27,11 @@ BASE_URL = "https://freewebnovel.com"
 
 _NOVEL_URL_RE = re.compile(r"(https?://[^/]+/novel/[^/?#]+)")
 
-#: Bezpiecznik przed zapetleniem, gdyby paginacja zwariowala. Realne powiesci
-#: konczą się dobrze ponizej tego progu (4400 rozdzialow = 111 stron).
+#: Safety valve against looping if pagination goes haywire. Real novels end
+#: well below this threshold (4400 chapters = 111 pages).
 MAX_LIST_PAGES = 400
 
-#: Bloki reklamowe wstrzykniete w srodek tresci rozdzialu.
+#: Ad blocks injected into the middle of the chapter content.
 AD_SELECTORS = (
     ".reader-ad-skip",
     "[id^=bg-ssp]",
@@ -44,10 +44,10 @@ class FreeWebNovelParser(BaseParser):
     name = "freewebnovel"
     label = "FreeWebNovel"
     domains = ("freewebnovel.com",)
-    #: Tresc jest renderowana po stronie serwera - lekki tryb wystarcza.
+    #: The content is server-rendered - the lightweight mode is enough.
     requires_playwright = False
 
-    # -- Metadane -----------------------------------------------------------
+    # -- Metadata -----------------------------------------------------------
 
     def get_metadata(self, url: str) -> NovelMetadata:
         url = self.normalize_url(url)
@@ -82,7 +82,7 @@ class FreeWebNovelParser(BaseParser):
             publisher="FreeWebNovel",
         )
 
-    # -- Lista rozdzialow ---------------------------------------------------
+    # -- Chapter list -------------------------------------------------------
 
     def get_chapter_list(self, url: str) -> list[ChapterRef]:
         url = self.normalize_url(url)
@@ -91,8 +91,8 @@ class FreeWebNovelParser(BaseParser):
         entries = self._chapter_entries(soup, url)
         if not entries:
             raise ParserError(
-                "Nie znalazlem listy rozdzialow. Sprawdz, czy URL wskazuje na "
-                "strone glowna powiesci (np. https://freewebnovel.com/novel/slug)."
+                "Could not find the chapter list. Check that the URL points at the "
+                "novel's main page (e.g. https://freewebnovel.com/novel/slug)."
             )
 
         total_pages = min(self._count_pages(soup), MAX_LIST_PAGES)
@@ -102,8 +102,9 @@ class FreeWebNovelParser(BaseParser):
             page_soup = self.fetcher.get_soup(f"{url}?page={page}")
             fresh = [e for e in self._chapter_entries(page_soup, url) if e[1] not in seen]
             if not fresh:
-                # Serwis potrafi oddac te sama strone zamiast 404 - to nasz koniec listy.
-                log.debug("Paginacja %s zatrzymana na stronie %s", url, page)
+                # The site may serve the same page instead of a 404 - that is
+                # our end of the list.
+                log.debug("Pagination for %s stopped at page %s", url, page)
                 break
             seen.update(entry[1] for entry in fresh)
             entries.extend(fresh)
@@ -114,10 +115,10 @@ class FreeWebNovelParser(BaseParser):
         ]
 
     def _chapter_entries(self, soup: BeautifulSoup, base: str) -> list[tuple[str, str]]:
-        """(tytul, url) z jednej strony listy - bez numeracji, ta powstaje na koncu."""
-        # Uwaga: ul.ul-list5 wystepuje na stronie kilka razy - m.in. w bloku
-        # "najnowsze rozdzialy", ktory zaburzylby kolejnosc. Dlatego najpierw
-        # zawezamy sie do wlasciwego kontenera, a dopiero w nim szukamy linkow.
+        """(title, url) from one list page - unnumbered, numbering happens at the end."""
+        # Careful: ul.ul-list5 appears on the page several times - among others
+        # in the "latest chapters" block, which would break the ordering. So we
+        # first narrow down to the right container and only then look for links.
         container = soup.select_one("#idData") or soup.select_one("div.m-newest2 ul.ul-list5")
         if container is None:
             return []
@@ -133,31 +134,32 @@ class FreeWebNovelParser(BaseParser):
 
     @staticmethod
     def _count_pages(soup: BeautifulSoup) -> int:
-        """Liczba stron listy = liczba pozycji w <select> paginacji.
+        """Number of list pages = number of entries in the pagination <select>.
 
-        Same wartosci <option> sa bezuzyteczne (kazda wskazuje na strone glowna,
-        prawdziwe adresy dokleja JavaScript), ale ich liczba jest wiarygodna.
+        The <option> values themselves are useless (each points at the main
+        page, JavaScript fills in the real addresses), but their count is
+        trustworthy.
         """
         options = soup.select("#indexselect option")
         return max(len(options), 1)
 
-    # -- Tresc rozdzialu ----------------------------------------------------
+    # -- Chapter content ----------------------------------------------------
 
     def get_chapter_content(self, chapter: ChapterRef) -> ChapterContent:
         soup = self.soup(chapter.url)
 
-        # Reklamy siedza w srodku #article; sanitize_html usunelby same skrypty,
-        # ale wrappery potrafia zawierac tekst ("Advertisement"), wiec lecą cale.
+        # Ads sit inside #article; sanitize_html would drop the scripts alone,
+        # but the wrappers can carry text ("Advertisement"), so they go whole.
         for selector in AD_SELECTORS:
             for element in soup.select(selector):
                 element.decompose()
         strip_css_hidden(soup)
 
-        # Kolejnosc ma znaczenie: #article siedzi wewnatrz div.m-read div.txt,
-        # a ten wrapper zawiera dodatkowe bloki reklamowe.
+        # Order matters: #article sits inside div.m-read div.txt, and that
+        # wrapper holds additional ad blocks.
         content = self.select_first(soup, "#article", "div.m-read div.txt")
         if content is None:
-            raise ParserError(f"Brak tresci rozdzialu pod adresem {chapter.url}")
+            raise ParserError(f"No chapter content at {chapter.url}")
 
         title = (
             self.meta_content(soup, "og:novel:chapter_name")
@@ -166,14 +168,14 @@ class FreeWebNovelParser(BaseParser):
         )
         html = sanitize_html(content, base_url=chapter.url)
         if not html_to_text(html):
-            raise ParserError(f"Rozdzial {chapter.url} jest pusty po oczyszczeniu")
+            raise ParserError(f"Chapter {chapter.url} is empty after cleaning")
 
         return ChapterContent(title=title, html=html)
 
-    # -- Pomocnicze ---------------------------------------------------------
+    # -- Helpers ------------------------------------------------------------
 
     def normalize_url(self, url: str) -> str:
-        """Sprowadza URL rozdzialu albo strony paginacji do adresu powiesci."""
+        """Reduces a chapter or pagination URL to the novel's address."""
         url = url.split("#")[0].split("?")[0].rstrip("/")
         match = _NOVEL_URL_RE.match(url)
         return match.group(1) if match else url

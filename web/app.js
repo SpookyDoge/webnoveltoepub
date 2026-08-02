@@ -1,4 +1,4 @@
-/* webnoveltoepub - front bez frameworka i bez kroku budowania. */
+/* webnoveltoepub - frontend with no framework and no build step. */
 
 const STORAGE_KEY = "wne.language";
 const FALLBACK_LANGUAGE = "en";
@@ -56,12 +56,12 @@ function applyTranslations() {
     element.placeholder = t(element.dataset.i18nPlaceholder);
   }
   document.title = t("app.title");
-  // Fragmenty budowane dynamicznie trzeba przerysowac po zmianie jezyka.
+  // Dynamically built fragments have to be redrawn after a language change.
   renderDynamic();
 }
 
 // ---------------------------------------------------------------------------
-// Elementy
+// Elements
 // ---------------------------------------------------------------------------
 
 const el = {
@@ -156,7 +156,7 @@ function renderChapters(chapters, maxChapters) {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.value = String(chapter.index);
-    // Domyslnie zaznaczamy tylko tyle, ile serwer i tak przepusci.
+    // By default tick only as many as the server would let through anyway.
     checkbox.checked = chapter.index <= maxChapters;
     checkbox.addEventListener("change", updateSelectedCount);
 
@@ -213,7 +213,7 @@ function setStatus(key) {
   el.status.hidden = false;
 }
 
-/** Mapuje `detail` z API na klucz tlumaczenia. */
+/** Maps the API's `detail` onto a translation key. */
 function errorKeyFromDetail(detail) {
   const known = ["invalid_url", "unsupported_site", "parser_error", "fetch_error"];
   const match = known.find((key) => String(detail || "").startsWith(key));
@@ -221,7 +221,7 @@ function errorKeyFromDetail(detail) {
 }
 
 // ---------------------------------------------------------------------------
-// Akcje
+// Actions
 // ---------------------------------------------------------------------------
 
 async function loadPreview(event) {

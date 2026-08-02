@@ -1,8 +1,8 @@
-"""Wspolny interfejs parserow.
+"""The shared parser interface.
 
-Kazdy obslugiwany serwis to jedna klasa dziedziczaca po `BaseParser`, w osobnym
-pliku w tym katalogu. Rejestracja dzieje sie automatycznie (`__init_subclass__`)
-- nie ma zadnej centralnej listy, ktora trzeba pamietac o aktualizacji.
+Every supported site is one class deriving from `BaseParser`, in its own file
+in this directory. Registration happens automatically (`__init_subclass__`)
+- there is no central list anyone has to remember to update.
 """
 
 from __future__ import annotations
@@ -18,26 +18,26 @@ from ..models import ChapterContent, ChapterRef, CoverImage, NovelMetadata
 
 log = logging.getLogger(__name__)
 
-#: Wypelniane automatycznie przez __init_subclass__.
+#: Filled in automatically by __init_subclass__.
 _REGISTRY: list[type[BaseParser]] = []
 
 
 class ParserError(RuntimeError):
-    """Parser nie poradzil sobie ze strona (zmiana layoutu, blokada, 404...)."""
+    """The parser could not handle the page (layout change, block, 404...)."""
 
 
 class BaseParser(ABC):
-    """Kontrakt, ktory musi spelnic parser jednego serwisu."""
+    """The contract a single-site parser has to fulfil."""
 
-    #: Stabilny identyfikator (uzywany w API i logach).
+    #: Stable identifier (used in the API and in logs).
     name: str = "base"
-    #: Nazwa pokazywana uzytkownikowi.
+    #: Name shown to the user.
     label: str = "Base"
-    #: Domeny obslugiwane przez parser; dopasowanie obejmuje subdomeny.
+    #: Domains handled by the parser; matching covers subdomains too.
     domains: tuple[str, ...] = ()
-    #: True => strona wymaga renderowania JS (ciezki tryb).
+    #: True => the site needs JS rendering (heavy mode).
     requires_playwright: bool = False
-    #: Wyzszy priorytet wygrywa, gdy kilka parserow pasuje do URL-a.
+    #: Higher priority wins when several parsers match a URL.
     priority: int = 0
 
     def __init_subclass__(cls, **kwargs: object) -> None:
@@ -47,41 +47,41 @@ class BaseParser(ABC):
     def __init__(self, fetcher: Fetcher) -> None:
         self.fetcher = fetcher
 
-    # -- Dopasowanie URL-a --------------------------------------------------
+    # -- URL matching -------------------------------------------------------
 
     @classmethod
     def matches(cls, url: str) -> bool:
         host = (urlparse(url).hostname or "").lower()
         return any(host == d or host.endswith(f".{d}") for d in cls.domains)
 
-    # -- Kontrakt do zaimplementowania --------------------------------------
+    # -- The contract to implement ------------------------------------------
 
     @abstractmethod
     def get_metadata(self, url: str) -> NovelMetadata:
-        """Tytul, autor, opis, okladka - z URL-a strony glownej powiesci."""
+        """Title, author, description, cover - from the novel's main page URL."""
 
     @abstractmethod
     def get_chapter_list(self, url: str) -> list[ChapterRef]:
-        """Rozdzialy w kolejnosci czytania, indeksowane od 1."""
+        """Chapters in reading order, indexed from 1."""
 
     @abstractmethod
     def get_chapter_content(self, chapter: ChapterRef) -> ChapterContent:
-        """Tresc jednego rozdzialu jako oczyszczony fragment XHTML."""
+        """One chapter's content as a cleaned XHTML fragment."""
 
-    # -- Implementacje domyslne (mozna nadpisac) ----------------------------
+    # -- Default implementations (overridable) ------------------------------
 
     def get_cover_image(self, metadata: NovelMetadata) -> CoverImage | None:
-        """Pobiera okladke z `metadata.cover_url`. Brak okladki nie jest bledem."""
+        """Downloads the cover from `metadata.cover_url`. A missing cover is fine."""
         if not metadata.cover_url:
             return None
         try:
             data, media_type = self.fetcher.get_bytes(metadata.cover_url)
         except FetchError as exc:
-            log.warning("Nie udalo sie pobrac okladki %s: %s", metadata.cover_url, exc)
+            log.warning("Could not fetch cover %s: %s", metadata.cover_url, exc)
             return None
 
         if not media_type.startswith("image/"):
-            log.warning("Okladka %s ma typ %s - pomijam", metadata.cover_url, media_type)
+            log.warning("Cover %s has type %s - skipping", metadata.cover_url, media_type)
             return None
 
         extension = {"image/png": "png", "image/webp": "webp", "image/gif": "gif"}.get(
@@ -92,17 +92,17 @@ class BaseParser(ABC):
         )
 
     def normalize_url(self, url: str) -> str:
-        """Szansa na sprowadzenie URL-a rozdzialu do adresu strony glownej."""
+        """A chance to reduce a chapter URL to the novel's main page address."""
         return url.split("#")[0].rstrip("/")
 
-    # -- Pomocnicze ---------------------------------------------------------
+    # -- Helpers ------------------------------------------------------------
 
     def soup(self, url: str) -> BeautifulSoup:
         return self.fetcher.get_soup(url)
 
     @staticmethod
     def meta_content(soup: BeautifulSoup, *names: str) -> str | None:
-        """Pierwsza pasujaca wartosc z <meta property|name=...>."""
+        """First matching value from <meta property|name=...>."""
         for name in names:
             for attr in ("property", "name", "itemprop"):
                 tag = soup.find("meta", attrs={attr: name})
@@ -112,12 +112,12 @@ class BaseParser(ABC):
 
     @staticmethod
     def select_first(soup: BeautifulSoup, *selectors: str) -> Tag | None:
-        """Pierwszy trafiony element wedlug KOLEJNOSCI SELEKTOROW.
+        """First element found, following the ORDER OF THE SELECTORS.
 
-        Nie uzywaj `soup.select_one("#a, .b")` do wyrazania priorytetu: lista
-        selektorow CSS zwraca element wystepujacy wczesniej w *dokumencie*,
-        wiec przy zagniezdzonych kontenerach wybierze szerszy wrapper razem
-        z jego smieciami (reklamy, nawigacja) zamiast wlasciwej tresci.
+        Do not use `soup.select_one("#a, .b")` to express priority: a CSS
+        selector list returns whichever element comes first in the *document*,
+        so with nested containers it picks the wider wrapper along with its
+        junk (ads, navigation) instead of the actual content.
         """
         for selector in selectors:
             element = soup.select_one(selector)

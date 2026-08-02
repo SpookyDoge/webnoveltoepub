@@ -20,7 +20,7 @@ def test_url_matching():
 
 
 def test_domain_matching_is_not_a_substring_check():
-    """"notroyalroad.com" nie moze przejsc jako royalroad.com."""
+    """"notroyalroad.com" must not pass as royalroad.com."""
     assert get_parser_class("https://notroyalroad.com/fiction/1") is None
 
 

@@ -1,5 +1,5 @@
 services:
-  # Domyslny, lekki serwis: docker compose up
+  # Default, lightweight service: docker compose up
   app:
     build:
       context: .
@@ -15,7 +15,7 @@ services:
       WNE_LOG_LEVEL: "${WNE_LOG_LEVEL:-INFO}"
     restart: unless-stopped
 
-  # Ciezki tryb (Chromium): docker compose --profile playwright up app-playwright
+  # Heavy mode (Chromium): docker compose --profile playwright up app-playwright
   app-playwright:
     profiles: ["playwright"]
     build:
@@ -30,6 +30,6 @@ services:
       WNE_MAX_CHAPTERS: "${WNE_MAX_CHAPTERS:-300}"
       WNE_REQUEST_DELAY: "${WNE_REQUEST_DELAY:-1.5}"
       WNE_LOG_LEVEL: "${WNE_LOG_LEVEL:-INFO}"
-    # Chromium potrzebuje wiecej pamieci wspoldzielonej niz domyslne 64 MB.
+    # Chromium needs more shared memory than the default 64 MB.
     shm_size: "1gb"
     restart: unless-stopped

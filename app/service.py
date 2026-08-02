@@ -1,7 +1,7 @@
-"""Orkiestracja: URL -> parser -> rozdzialy -> EPUB.
+"""Orchestration: URL -> parser -> chapters -> EPUB.
 
-Kod jest synchroniczny; warstwa HTTP odpala go przez `asyncio.to_thread`,
-zeby nie blokowac petli zdarzen (i zeby dzialal synchroniczny Playwright).
+The code is synchronous; the HTTP layer runs it through `asyncio.to_thread`
+so the event loop is not blocked (and so the synchronous Playwright API works).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 
 class UnsupportedSiteError(RuntimeError):
-    """Zaden parser nie obsluguje tej domeny."""
+    """No parser handles this domain."""
 
 
 @dataclass
@@ -36,7 +36,7 @@ class ConversionResult:
     metadata: NovelMetadata
     chapter_count: int
     warnings: list[str] = field(default_factory=list)
-    #: Ustawione, gdy kopia trafila na dysk (WNE_SAVE_TO_DISK).
+    #: Set when a copy was written to disk (WNE_SAVE_TO_DISK).
     saved_path: Path | None = None
 
 
@@ -78,12 +78,12 @@ def convert(request: ConvertRequest, settings: Settings | None = None) -> Conver
         all_chapters = parser.get_chapter_list(request.url)
         selected = select_chapters(all_chapters, request)
         if not selected:
-            raise ParserError("Wybor rozdzialow jest pusty")
+            raise ParserError("The chapter selection is empty")
 
         if len(selected) > settings.max_chapters:
             warnings.append(
-                f"Ograniczono do {settings.max_chapters} rozdzialow "
-                f"(z {len(selected)} wybranych)"
+                f"Limited to {settings.max_chapters} chapters "
+                f"(out of {len(selected)} selected)"
             )
             selected = selected[: settings.max_chapters]
 
@@ -92,14 +92,14 @@ def convert(request: ConvertRequest, settings: Settings | None = None) -> Conver
             try:
                 contents.append(parser.get_chapter_content(chapter))
             except (FetchError, ParserError) as exc:
-                log.warning("Pomijam rozdzial %s (%s): %s", chapter.index, chapter.url, exc)
+                log.warning("Skipping chapter %s (%s): %s", chapter.index, chapter.url, exc)
                 warnings.append(f"#{chapter.index} {chapter.title}: {exc}")
                 contents.append(
                     ChapterContent(
                         title=chapter.title,
                         html=(
-                            "<p><em>[webnoveltoepub] Nie udalo sie pobrac tego "
-                            f"rozdzialu. Zrodlo: <a href=\"{chapter.url}\">"
+                            "<p><em>[webnoveltoepub] This chapter could not be "
+                            f"fetched. Source: <a href=\"{chapter.url}\">"
                             f"{chapter.url}</a></em></p>"
                         ),
                     )
@@ -117,15 +117,15 @@ def convert(request: ConvertRequest, settings: Settings | None = None) -> Conver
         metadata=metadata,
         chapter_count=len(contents),
         warnings=warnings,
-        saved_path=save_to_disk(file_name, payload, settings),
+        saved_path=save_epub_to_disk(file_name, payload, settings),
     )
 
 
-def save_to_disk(file_name: str, payload: bytes, settings: Settings) -> Path | None:
-    """Zapisuje kopie EPUB-a w `settings.output_dir`, jesli wlaczono zapis.
+def save_epub_to_disk(file_name: str, payload: bytes, settings: Settings) -> Path | None:
+    """Writes a copy of the EPUB into `settings.output_dir` when saving is enabled.
 
-    Problem z dyskiem (brak uprawnien do bind mounta, pelny wolumen) nie moze
-    wywrocic konwersji - uzytkownik i tak dostaje plik w odpowiedzi HTTP.
+    A disk problem (no write permission on the bind mount, a full volume) must
+    not bring the conversion down - the user still gets the file over HTTP.
     """
     if not settings.save_to_disk:
         return None
@@ -137,22 +137,22 @@ def save_to_disk(file_name: str, payload: bytes, settings: Settings) -> Path | N
         target.write_bytes(payload)
     except OSError as exc:
         log.warning(
-            "Nie udalo sie zapisac EPUB-a w %s: %s. "
-            "Przy bind mouncie sprawdz uprawnienia do zapisu dla uzytkownika kontenera.",
+            "Could not save the EPUB in %s: %s. "
+            "With a bind mount, check write permissions for the container user.",
             settings.output_dir,
             exc,
         )
         return None
 
-    log.info("Zapisano %s", target)
+    log.info("Saved %s", target)
     return target
 
 
 def _free_path(path: Path) -> Path:
-    """Nie nadpisujemy cudzych plikow - kolejne konwersje dostaja sufiks -2, -3...
+    """We never overwrite someone's file - later conversions get a -2, -3 suffix.
 
-    Ta sama powiesc konwertowana w innym zakresie rozdzialow ma te sama nazwe,
-    a po cichu podmieniony plik to utrata danych uzytkownika.
+    The same novel converted over a different chapter range produces the same
+    file name, and silently replacing a file is losing the user's data.
     """
     if not path.exists():
         return path
@@ -160,11 +160,11 @@ def _free_path(path: Path) -> Path:
         candidate = path.with_name(f"{path.stem}-{counter}{path.suffix}")
         if not candidate.exists():
             return candidate
-    raise OSError(f"Za duzo plikow o nazwie {path.name}")
+    raise OSError(f"Too many files named {path.name}")
 
 
 def select_chapters(chapters: list[ChapterRef], request: ConvertRequest) -> list[ChapterRef]:
-    """Filtruje liste rozdzialow wg `selected` (wygrywa) albo zakresu start/end."""
+    """Filters the chapter list by `selected` (wins) or by the start/end range."""
     if request.selected:
         wanted = set(request.selected)
         return [chapter for chapter in chapters if chapter.index in wanted]

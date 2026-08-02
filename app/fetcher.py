@@ -1,8 +1,8 @@
-"""Warstwa pobierania stron.
+"""Page fetching layer.
 
-Domyslnie `requests` (szybko, tanio). Playwright wlacza sie per-parser
-(`requires_playwright = True`) albo globalnie przez WNE_PLAYWRIGHT_ENABLED,
-i jest importowany leniwie - lekki obraz Dockera go nie ma.
+`requests` by default (fast, cheap). Playwright is enabled per parser
+(`requires_playwright = True`) or globally via WNE_PLAYWRIGHT_ENABLED, and is
+imported lazily - the lightweight Docker image does not ship it.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from .config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
-#: lxml jest szybszy i wybaczajacy, ale nie chcemy twardej zaleznosci w testach.
-try:  # pragma: no cover - zalezne od srodowiska
+#: lxml is faster and more forgiving, but we don't want a hard test dependency.
+try:  # pragma: no cover - environment dependent
     import lxml  # noqa: F401
 
     _BS_PARSER = "lxml"
@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
 
 
 class FetchError(RuntimeError):
-    """Nie udalo sie pobrac zasobu po wszystkich probach."""
+    """Fetching a resource failed after every attempt."""
 
 
 def make_soup(html: str) -> BeautifulSoup:
@@ -35,10 +35,10 @@ def make_soup(html: str) -> BeautifulSoup:
 
 
 class Fetcher:
-    """Klient HTTP z throttlingiem, retry i cache'em na czas jednego zadania.
+    """HTTP client with throttling, retries and a per-job cache.
 
-    Cache jest celowy: parser czesto potrzebuje tej samej strony spisu tresci
-    w `get_metadata()` i `get_chapter_list()` - nie ma powodu pobierac jej dwa razy.
+    The cache is deliberate: a parser often needs the same table-of-contents
+    page in `get_metadata()` and `get_chapter_list()` - no reason to fetch twice.
     """
 
     def __init__(
@@ -62,7 +62,7 @@ class Fetcher:
         self._browser = None
         self._playwright = None
 
-    # -- API publiczne ------------------------------------------------------
+    # -- Public API ---------------------------------------------------------
 
     def get_text(self, url: str, *, use_cache: bool = True) -> str:
         if use_cache and url in self._cache:
@@ -81,7 +81,7 @@ class Fetcher:
         return make_soup(self.get_text(url, use_cache=use_cache))
 
     def get_bytes(self, url: str) -> tuple[bytes, str]:
-        """Zwraca (dane, content-type) - uzywane do okladek i obrazkow."""
+        """Returns (data, content-type) - used for covers and images."""
         self._throttle()
         last_error: Exception | None = None
         for attempt in range(1, self.settings.max_retries + 1):
@@ -90,15 +90,15 @@ class Fetcher:
                 resp.raise_for_status()
                 content_type = resp.headers.get("Content-Type", "application/octet-stream")
                 return resp.content, content_type.split(";")[0].strip()
-            except Exception as exc:  # noqa: BLE001 - retry na wszystkim
+            except Exception as exc:  # noqa: BLE001 - retry on anything
                 last_error = exc
-                log.warning("Blad pobierania %s (proba %s): %s", url, attempt, exc)
+                log.warning("Failed to fetch %s (attempt %s): %s", url, attempt, exc)
                 self._backoff(attempt)
-        raise FetchError(f"Nie udalo sie pobrac {url}: {last_error}")
+        raise FetchError(f"Could not fetch {url}: {last_error}")
 
     def close(self) -> None:
         self._session.close()
-        if self._browser is not None:  # pragma: no cover - tylko ciezki tryb
+        if self._browser is not None:  # pragma: no cover - heavy mode only
             self._browser.close()
             self._browser = None
         if self._playwright is not None:  # pragma: no cover
@@ -111,7 +111,7 @@ class Fetcher:
     def __exit__(self, *exc_info: object) -> None:
         self.close()
 
-    # -- Wewnetrzne ---------------------------------------------------------
+    # -- Internals ----------------------------------------------------------
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
@@ -130,26 +130,26 @@ class Fetcher:
             try:
                 resp = self._session.get(url, timeout=self.settings.request_timeout)
                 resp.raise_for_status()
-                #: requests czasem zgaduje latin-1 dla stron bez charsetu w naglowku.
+                #: requests sometimes guesses latin-1 for pages with no charset header.
                 if resp.encoding and resp.encoding.lower() == "iso-8859-1":
                     resp.encoding = resp.apparent_encoding
                 return resp.text
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
-                log.warning("Blad pobierania %s (proba %s): %s", url, attempt, exc)
+                log.warning("Failed to fetch %s (attempt %s): %s", url, attempt, exc)
                 if attempt < self.settings.max_retries:
                     self._backoff(attempt)
-        raise FetchError(f"Nie udalo sie pobrac {url}: {last_error}")
+        raise FetchError(f"Could not fetch {url}: {last_error}")
 
     def _fetch_with_playwright(self, url: str) -> str:  # pragma: no cover
-        """Ciezki tryb - dziala tylko w obrazie budowanym z targetu `playwright`."""
+        """Heavy mode - only works in an image built from the `playwright` target."""
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
             raise FetchError(
-                "Playwright nie jest zainstalowany. Uruchom obraz z targetu "
-                "`playwright` (docker compose --profile playwright up) albo "
-                "zainstaluj requirements-playwright.txt."
+                "Playwright is not installed. Run an image built from the "
+                "`playwright` target (docker compose --profile playwright up) "
+                "or install requirements-playwright.txt."
             ) from exc
 
         if self._browser is None:
@@ -166,6 +166,6 @@ class Fetcher:
             )
             return page.content()
         except Exception as exc:  # noqa: BLE001
-            raise FetchError(f"Playwright nie pobral {url}: {exc}") from exc
+            raise FetchError(f"Playwright failed to fetch {url}: {exc}") from exc
         finally:
             page.close()

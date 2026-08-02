@@ -11,7 +11,7 @@ from app.fetcher import make_soup  # noqa: E402
 
 
 class FakeFetcher:
-    """Podmienia Fetcher w testach - serwuje HTML ze slownika, zero sieci."""
+    """Stands in for Fetcher in tests - serves HTML from a dict, no network."""
 
     def __init__(self, pages: dict[str, str], binaries: dict[str, tuple[bytes, str]] | None = None):
         self.pages = pages

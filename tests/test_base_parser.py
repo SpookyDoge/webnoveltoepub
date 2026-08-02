@@ -1,4 +1,4 @@
-"""Testy pomocnikow z BaseParser - wspolnych dla wszystkich parserow."""
+"""Tests for the BaseParser helpers - shared by every parser."""
 
 from __future__ import annotations
 
@@ -16,14 +16,14 @@ NESTED = """
 
 
 def test_select_first_respects_selector_order_not_document_order():
-    """Regresja: select_one("#content, .wrapper") zwraca wrapper (jest wyzej
-    w dokumencie), przez co tresc przychodzi razem ze smieciami wokol niej."""
+    """Regression: select_one("#content, .wrapper") returns the wrapper (it comes
+    first in the document), so the content arrives with the junk around it."""
     soup = make_soup(NESTED)
 
-    # Tak zachowuje sie lista selektorow CSS - dlatego jej nie uzywamy.
+    # This is how a CSS selector list behaves - which is why we don't use one.
     assert soup.select_one("#content, div.wrapper").get("class") == ["wrapper"]
 
-    # select_first pyta selektorami po kolei.
+    # select_first asks selector by selector.
     element = BaseParser.select_first(soup, "#content", "div.wrapper")
     assert element.get("id") == "content"
     assert "smiec" not in element.get_text()

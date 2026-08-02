@@ -1,21 +1,21 @@
-"""Modele domenowe (uzywane przez parsery) i schematy API."""
+"""Domain models (used by parsers) and API schemas."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
 # --------------------------------------------------------------------------
-# Modele domenowe - to jest kontrakt miedzy parserem a reszta aplikacji.
+# Domain models - this is the contract between a parser and the rest of the app.
 # --------------------------------------------------------------------------
 
 
 class NovelMetadata(BaseModel):
-    """Metadane calej powiesci."""
+    """Metadata for a whole novel."""
 
     title: str
     author: str = "Unknown"
     description: str = ""
-    #: Kod jezyka tresci (BCP-47), trafia do <dc:language> w EPUB-ie.
+    #: Content language code (BCP-47), ends up in <dc:language> in the EPUB.
     language: str = "en"
     cover_url: str | None = None
     source_url: str
@@ -24,7 +24,7 @@ class NovelMetadata(BaseModel):
 
 
 class ChapterRef(BaseModel):
-    """Pozycja na liscie rozdzialow (jeszcze bez tresci)."""
+    """An entry in the chapter list (no content yet)."""
 
     index: int
     title: str
@@ -32,10 +32,10 @@ class ChapterRef(BaseModel):
 
 
 class ChapterContent(BaseModel):
-    """Pobrana i oczyszczona tresc rozdzialu."""
+    """Fetched and cleaned chapter content."""
 
     title: str
-    #: Fragment XHTML (bez <html>/<body>) - ebooklib owija go szablonem.
+    #: XHTML fragment (no <html>/<body>) - ebooklib wraps it in a template.
     html: str
 
 
@@ -46,7 +46,7 @@ class CoverImage(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# Schematy API
+# API schemas
 # --------------------------------------------------------------------------
 
 
@@ -65,19 +65,19 @@ class PreviewResponse(BaseModel):
     parser: str
     metadata: NovelMetadata
     chapters: list[ChapterRef]
-    #: Limit z konfiguracji - front pokazuje ostrzezenie, gdy lista jest dluzsza.
+    #: The configured cap - the frontend warns when the list is longer.
     max_chapters: int
 
 
 class ConvertRequest(BaseModel):
     url: str
-    #: Zakres 1-based, wlacznie. Ignorowany, gdy podano `selected`.
+    #: 1-based range, inclusive. Ignored when `selected` is given.
     start: int | None = None
     end: int | None = None
-    #: Konkretne indeksy rozdzialow (1-based) - wygrywa z zakresem.
+    #: Explicit chapter indices (1-based) - takes precedence over the range.
     selected: list[int] | None = None
     include_cover: bool = True
-    #: Nadpisuje jezyk wykryty przez parser (np. "pl").
+    #: Overrides the language detected by the parser (e.g. "pl").
     language: str | None = None
 
 

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
-# Dwa targety:
-#   runtime    - lekki obraz (requests + BeautifulSoup), domyslny; ~200 MB
-#   playwright - + Chromium do stron renderowanych JS-em ("ciezki tryb"); ~1.5 GB
+# Two targets:
+#   runtime    - lightweight image (requests + BeautifulSoup), default; ~200 MB
+#   playwright - + Chromium for JS-rendered sites ("heavy mode"); ~1.5 GB
 #
 # docker build --target runtime    -t webnoveltoepub .
 # docker build --target playwright -t webnoveltoepub:playwright .
@@ -32,8 +32,8 @@ FROM base AS runtime
 COPY app ./app
 COPY web ./web
 
-# Katalog na kopie EPUB-ow (WNE_SAVE_TO_DISK). Musi nalezec do appuser,
-# inaczej nie-root nie zapisze nic bez podpietego bind mounta.
+# Directory for EPUB copies (WNE_SAVE_TO_DISK). It has to belong to appuser,
+# otherwise a non-root process cannot write anything without a bind mount.
 RUN mkdir -p /app/output && chown appuser:appuser /app/output
 
 USER appuser
@@ -48,7 +48,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 # --------------------------------------------------------------------------
 FROM base AS playwright
 
-# Przegladarki poza /root, zeby byly czytelne dla nie-roota.
+# Browsers outside /root so a non-root user can read them.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     WNE_PLAYWRIGHT_ENABLED=true
 
@@ -60,8 +60,8 @@ RUN pip install --no-cache-dir -r requirements-playwright.txt \
 COPY app ./app
 COPY web ./web
 
-# Katalog na kopie EPUB-ow (WNE_SAVE_TO_DISK). Musi nalezec do appuser,
-# inaczej nie-root nie zapisze nic bez podpietego bind mounta.
+# Directory for EPUB copies (WNE_SAVE_TO_DISK). It has to belong to appuser,
+# otherwise a non-root process cannot write anything without a bind mount.
 RUN mkdir -p /app/output && chown appuser:appuser /app/output
 
 USER appuser

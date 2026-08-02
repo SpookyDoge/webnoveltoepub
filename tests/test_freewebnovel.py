@@ -1,4 +1,4 @@
-"""Testy parsera FreeWebNovel na syntetycznym HTML-u odwzorowujacym strukture strony."""
+"""FreeWebNovel parser tests on synthetic HTML mirroring the site's structure."""
 
 from __future__ import annotations
 
@@ -67,9 +67,9 @@ def _list_page(numbers: range, page_count: int) -> str:
 
 CHAPTER_URL = "https://freewebnovel.com/novel/testowa-powiesc/chapter-1"
 
-#: Odwzorowuje prawdziwa strukture: #article jest ZAGNIEZDZONY w div.m-read
-#: div.txt, a we wrapperze (poza trescia) siedza dodatkowe smieci reklamowe -
-#: w tym zakomentowany kod, ktory `decode()` wypisuje doslownie.
+#: Mirrors the real structure: #article is NESTED inside div.m-read div.txt,
+#: and the wrapper (outside the content) holds extra ad junk - including
+#: commented-out code, which `decode()` writes out verbatim.
 CHAPTER_PAGE = """
 <html><head>
   <meta property="og:novel:chapter_name" content="Chapter 1 Prawdziwy Tytul"/>
@@ -119,7 +119,7 @@ def parser(fake_fetcher):
 
 @pytest.fixture
 def paginated_parser(fake_fetcher):
-    """Powiesc na 3 stronach listy: 40 + 40 + 5 rozdzialow."""
+    """A novel spread over 3 list pages: 40 + 40 + 5 chapters."""
     fetcher = fake_fetcher(
         pages={
             NOVEL_URL: _list_page(range(1, 41), page_count=3),
@@ -130,7 +130,7 @@ def paginated_parser(fake_fetcher):
     return FreeWebNovelParser(fetcher)
 
 
-# -- Metadane ---------------------------------------------------------------
+# -- Metadata ---------------------------------------------------------------
 
 
 def test_get_metadata_prefers_og_novel_meta(parser):
@@ -160,7 +160,7 @@ def test_get_cover_image(parser):
     assert cover.media_type == "image/jpeg"
 
 
-# -- Lista rozdzialow -------------------------------------------------------
+# -- Chapter list -----------------------------------------------------------
 
 
 def test_single_page_chapter_list(parser):
@@ -172,7 +172,7 @@ def test_single_page_chapter_list(parser):
 
 
 def test_latest_chapters_block_is_not_mixed_into_the_list(parser):
-    """Blok 'najnowsze rozdzialy' tez uzywa ul.ul-list5 - nie moze zaburzyc kolejnosci."""
+    """The 'latest chapters' block also uses ul.ul-list5 - it must not disturb the order."""
     chapters = parser.get_chapter_list(NOVEL_URL)
     assert [c.index for c in chapters] == list(range(1, 41))
     assert all("chapter-99" not in c.url for c in chapters[:40])
@@ -184,7 +184,7 @@ def test_pagination_walks_every_page(paginated_parser):
     assert [c.index for c in chapters[:3]] == [1, 2, 3]
     assert chapters[-1].index == 85
     assert chapters[-1].url.endswith("/chapter-85")
-    # Numeracja musi byc ciagla przez granice stron.
+    # Numbering has to stay continuous across the page boundary.
     assert [c.index for c in chapters] == list(range(1, 86))
 
 
@@ -195,7 +195,7 @@ def test_pagination_requests_expected_urls(paginated_parser):
 
 
 def test_pagination_stops_when_a_page_repeats(fake_fetcher):
-    """Serwis oddaje strone 1 zamiast 404 - nie wolno nam wpasc w petle ani duplikowac."""
+    """The site serves page 1 instead of a 404 - we must neither loop nor duplicate."""
     first = _list_page(range(1, 41), page_count=5)
     parser = FreeWebNovelParser(
         fake_fetcher({NOVEL_URL: first, f"{NOVEL_URL}?page=2": first})
@@ -211,7 +211,7 @@ def test_missing_chapter_list_raises_parser_error(fake_fetcher):
         parser.get_chapter_list(NOVEL_URL)
 
 
-# -- Tresc rozdzialu --------------------------------------------------------
+# -- Chapter content --------------------------------------------------------
 
 
 def test_chapter_content_strips_ads_and_css_traps(parser):
@@ -227,7 +227,7 @@ def test_chapter_content_strips_ads_and_css_traps(parser):
 
 
 def test_content_is_article_not_the_surrounding_wrapper(parser):
-    """#article jest zagniezdzony w div.txt - wrapper niesie smieci spoza tresci."""
+    """#article is nested in div.txt - the wrapper carries junk from outside the content."""
     content = parser.get_chapter_content(ChapterRef(index=1, title="x", url=CHAPTER_URL))
     assert "Reklama poza trescia" not in content.html
     assert "platform.example/ad.js" not in content.html

@@ -1,4 +1,4 @@
-"""Testy zapisu kopii EPUB-a na dysk (WNE_SAVE_TO_DISK)."""
+"""Tests for writing a copy of the EPUB to disk (WNE_SAVE_TO_DISK)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.config import Settings
-from app.service import _free_path, save_to_disk
+from app.service import _free_path, save_epub_to_disk
 
 PAYLOAD = b"PK\x03\x04udawany-epub"
 
@@ -22,7 +22,7 @@ def test_disabled_by_default():
 
 def test_writes_file_and_creates_directory(tmp_path):
     settings = _settings(tmp_path)
-    saved = save_to_disk("powiesc.epub", PAYLOAD, settings)
+    saved = save_epub_to_disk("powiesc.epub", PAYLOAD, settings)
 
     assert saved is not None
     assert saved.read_bytes() == PAYLOAD
@@ -31,16 +31,16 @@ def test_writes_file_and_creates_directory(tmp_path):
 
 def test_returns_none_when_disabled(tmp_path):
     settings = _settings(tmp_path, enabled=False)
-    assert save_to_disk("powiesc.epub", PAYLOAD, settings) is None
+    assert save_epub_to_disk("powiesc.epub", PAYLOAD, settings) is None
     assert not (tmp_path / "output").exists()
 
 
 def test_does_not_clobber_existing_file(tmp_path):
-    """Ta sama powiesc w innym zakresie rozdzialow ma te sama nazwe pliku."""
+    """The same novel over a different chapter range yields the same file name."""
     settings = _settings(tmp_path)
-    first = save_to_disk("powiesc.epub", b"pierwszy", settings)
-    second = save_to_disk("powiesc.epub", b"drugi", settings)
-    third = save_to_disk("powiesc.epub", b"trzeci", settings)
+    first = save_epub_to_disk("powiesc.epub", b"pierwszy", settings)
+    second = save_epub_to_disk("powiesc.epub", b"drugi", settings)
+    third = save_epub_to_disk("powiesc.epub", b"trzeci", settings)
 
     assert first.name == "powiesc.epub"
     assert second.name == "powiesc-2.epub"
@@ -49,14 +49,14 @@ def test_does_not_clobber_existing_file(tmp_path):
 
 
 def test_disk_failure_does_not_break_conversion(tmp_path, monkeypatch):
-    """Brak uprawnien do bind mounta nie moze wywrocic calej konwersji."""
+    """Missing bind-mount permissions must not bring the whole conversion down."""
     settings = _settings(tmp_path)
 
     def boom(*args, **kwargs):
         raise PermissionError("read-only file system")
 
     monkeypatch.setattr(Path, "mkdir", boom)
-    assert save_to_disk("powiesc.epub", PAYLOAD, settings) is None
+    assert save_epub_to_disk("powiesc.epub", PAYLOAD, settings) is None
 
 
 def test_free_path_returns_input_when_unused(tmp_path):
@@ -66,4 +66,4 @@ def test_free_path_returns_input_when_unused(tmp_path):
 
 @pytest.mark.parametrize("name", ["a.epub", "dluga-nazwa-powiesci.epub"])
 def test_saved_file_keeps_requested_name(tmp_path, name):
-    assert save_to_disk(name, PAYLOAD, _settings(tmp_path)).name == name
+    assert save_epub_to_disk(name, PAYLOAD, _settings(tmp_path)).name == name

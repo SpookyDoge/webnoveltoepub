@@ -1,8 +1,8 @@
-"""Czyszczenie HTML-a rozdzialu do postaci strawnej dla czytnikow EPUB.
+"""Cleaning chapter HTML into something EPUB readers can digest.
 
-Czytniki e-ink nie lubia skryptow, iframe'ow i losowego CSS-a, a walidatory
-EPUB-a wymagaja poprawnego XHTML-a. Zamiast dokladac `bleach` robimy prosta
-allowliste na BeautifulSoup - mamy pelna kontrole i zero dodatkowych zaleznosci.
+E-ink readers dislike scripts, iframes and arbitrary CSS, and EPUB validators
+demand well-formed XHTML. Instead of pulling in `bleach` we run a small
+allowlist over BeautifulSoup - full control and zero extra dependencies.
 """
 
 from __future__ import annotations
@@ -21,9 +21,9 @@ from bs4 import (
     Tag,
 )
 
-#: Wezly, ktore nie sa trescia, ale `decode()` wypisuje je doslownie.
-#: Serwisy trzymaja w komentarzach zakomentowany kod reklam - bez tego
-#: caly <!--<script src="...ad.js"></script>--> ladowal w EPUB-ie.
+#: Nodes that are not content, yet `decode()` writes them out verbatim.
+#: Sites keep commented-out ad code in there - without this the whole
+#: <!--<script src="...ad.js"></script>--> ended up inside the EPUB.
 NON_CONTENT_NODES = (Comment, CData, ProcessingInstruction, Declaration, Doctype)
 
 ALLOWED_TAGS: set[str] = {
@@ -33,8 +33,8 @@ ALLOWED_TAGS: set[str] = {
     "th", "thead", "tr", "u", "ul",
 }
 
-#: Znikaja razem z zawartoscia (w przeciwienstwie do tagow spoza allowlisty,
-#: ktore sa "rozpakowywane" - tresc zostaje, znacznik znika).
+#: Removed together with their content (unlike tags outside the allowlist,
+#: which are "unwrapped" - the text stays, the markup goes).
 DROP_TAGS: set[str] = {
     "script", "style", "iframe", "noscript", "form", "input", "button", "select",
     "textarea", "svg", "canvas", "video", "audio", "object", "embed", "ins",
@@ -52,16 +52,16 @@ _HIDDEN_RE = re.compile(
     r"(display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)", re.I
 )
 _CSS_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
-#: Tylko proste selektory - nie udajemy silnika CSS.
+#: Simple selectors only - we are not pretending to be a CSS engine.
 _SIMPLE_SELECTOR_RE = re.compile(r"^[.#]?[\w-]+$")
 
 
 def strip_css_hidden(soup: BeautifulSoup | Tag) -> None:
-    """Usuwa elementy ukryte przez <style> w dokumencie.
+    """Removes elements hidden by a <style> block in the document.
 
-    Czesc serwisow (m.in. RoyalRoad) wstrzykuje w tresc akapity-pulapki
-    ukryte regula CSS - w przegladarce ich nie widac, w EPUB-ie owszem.
-    Modyfikuje drzewo w miejscu.
+    Some sites (RoyalRoad among them) inject decoy paragraphs into the content
+    that are hidden by a CSS rule - invisible in a browser, visible in an EPUB.
+    Modifies the tree in place.
     """
     hidden_selectors: list[str] = []
     for style_tag in soup.find_all("style"):
@@ -78,7 +78,7 @@ def strip_css_hidden(soup: BeautifulSoup | Tag) -> None:
         try:
             for element in soup.select(selector):
                 element.decompose()
-        except Exception:  # noqa: BLE001 - selektor moze byc egzotyczny
+        except Exception:  # noqa: BLE001 - the selector may be exotic
             continue
 
 
@@ -88,9 +88,9 @@ def sanitize_html(
     base_url: str | None = None,
     keep_images: bool = False,
 ) -> str:
-    """Zwraca fragment XHTML gotowy do wrzucenia w rozdzial EPUB-a."""
+    """Returns an XHTML fragment ready to drop into an EPUB chapter."""
     if isinstance(html, Tag):
-        # Kopiujemy przez re-parsowanie, zeby nie zniszczyc drzewa wolajacego.
+        # Copy by re-parsing so we don't destroy the caller's tree.
         fragment = BeautifulSoup(str(html), "html.parser")
     else:
         fragment = BeautifulSoup(html, "html.parser")
@@ -104,7 +104,7 @@ def sanitize_html(
         tag.decompose()
 
     for tag in list(fragment.find_all(True)):
-        if not tag.parent:  # juz usuniety razem z rodzicem
+        if not tag.parent:  # already removed along with its parent
             continue
 
         if _is_hidden(tag):
@@ -135,7 +135,7 @@ def sanitize_html(
 
 
 def html_to_text(html: str | Tag, *, limit: int | None = None) -> str:
-    """Plaski tekst - do opisow w metadanych i podgladu na froncie."""
+    """Flattened text - for metadata descriptions and the frontend preview."""
     soup = html if isinstance(html, Tag) else BeautifulSoup(html, "html.parser")
     text = " ".join(soup.get_text(" ", strip=True).split())
     if limit and len(text) > limit:
@@ -151,14 +151,14 @@ def _is_hidden(tag: Tag) -> bool:
 
 
 def _drop_empty_blocks(soup: BeautifulSoup) -> None:
-    """Usuwa puste <p>/<div>/<span> zostajace po czyszczeniu."""
+    """Removes empty <p>/<div>/<span> left behind by the cleaning pass."""
     for tag in soup.find_all(["p", "div", "span"]):
         if tag.find(["img", "br", "hr", "table"]):
             continue
         if not tag.get_text(strip=True):
             tag.decompose()
 
-    # Wiodace/koncowe <br> nic nie wnosza.
+    # Leading/trailing <br> adds nothing.
     for tag in soup.find_all("br"):
         siblings = [
             s for s in tag.parent.children

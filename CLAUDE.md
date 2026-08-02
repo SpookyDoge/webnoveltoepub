@@ -15,7 +15,9 @@ GitHuba jako czytelny projekt do współtworzenia.
   (PyInstaller) dla użytkowników, którzy nie chcą Dockera.
 - UI dwujęzyczne (PL/EN) od początku.
 
-Komentarze w kodzie i ten plik są po polsku; README i stringi UI po angielsku
+**Cały kod źródłowy jest po angielsku** — komentarze, docstringi, komunikaty
+logów i treści wyjątków. Ten plik pozostaje po polsku (brief dla właściciela
+repo); po polsku zostają też `README.pl.md` i tłumaczenia w `web/locales/pl.json`
 (projekt celuje w społeczność międzynarodową).
 
 ## Architektura `app/`

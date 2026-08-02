@@ -4,8 +4,8 @@ on:
   push:
     tags:
       - "v*.*.*"
-  # Pozwala opublikowac pierwszy obraz (albo powtorzyc nieudany release)
-  # bez tworzenia nowego taga.
+  # Lets you publish the first image (or retry a failed release) without
+  # creating a new tag.
   workflow_dispatch:
     inputs:
       version:
@@ -13,9 +13,9 @@ on:
         required: true
 
 env:
-  # Wpisane wprost, a nie przez ${{ github.repository }}: GHCR odrzuca wielkie
-  # litery w nazwie obrazu, a wlasciciel repo to "SpookyDoge". Ta nazwa musi sie
-  # zgadzac z tym, co wskazuja pliki w deploy/.
+  # Written out instead of using ${{ github.repository }}: GHCR rejects capital
+  # letters in an image name, and the repo owner is "SpookyDoge". This name has
+  # to match what the files in deploy/ point at.
   IMAGE: ghcr.io/spookydoge/webnoveltoepub
 
 jobs:
@@ -32,8 +32,8 @@ jobs:
       - name: Resolve version
         id: meta
         env:
-          # Przez env, zeby tresc inputu nie byla wklejana do skryptu
-          # przez interpolacje (script injection).
+          # Through env so the input's content is not pasted into the script
+          # by interpolation (script injection).
           VERSION_INPUT: ${{ inputs.version }}
         run: |
           set -euo pipefail
@@ -64,8 +64,8 @@ jobs:
             .
 
       - name: Smoke test runtime variant
-        # Zepsute :latest trafiloby prosto do instalacji CasaOS z deploy/,
-        # wiec obraz musi wstac i odpowiedziec zanim cokolwiek wypchniemy.
+        # A broken :latest would go straight into CasaOS installs from deploy/,
+        # so the image has to come up and answer before we push anything.
         run: |
           set -uo pipefail
           docker run --detach --name smoke --publish 8000:8000 "${IMAGE}:latest"
@@ -83,8 +83,8 @@ jobs:
           fi
 
       - name: Build playwright variant
-        # Wspoldzieli warstwe `base` z wariantem runtime, wiec buduje sie
-        # tylko o Chromium dluzej.
+        # Shares the `base` layer with the runtime variant, so it only takes
+        # the extra Chromium time to build.
         run: |
           docker build --target playwright \
             --tag "${IMAGE}:playwright" \

@@ -1,4 +1,4 @@
-"""Aplikacja FastAPI: API + serwowanie frontu."""
+"""FastAPI application: the API plus serving the frontend."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ logging.basicConfig(
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     discover()
     log.info(
-        "Zaladowano %s parserow: %s",
+        "Loaded %s parsers: %s",
         len(all_parsers()),
         ", ".join(p.name for p in all_parsers()),
     )
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="webnoveltoepub",
     version=__version__,
-    description="Self-hosted konwerter web noveli do EPUB",
+    description="Self-hosted web novel to EPUB converter",
     lifespan=lifespan,
 )
 
@@ -120,7 +120,7 @@ async def convert_novel(request: ConvertRequest) -> Response:
 
     if result.warnings:
         log.warning(
-            "Konwersja %s zakonczona z %s ostrzezeniami",
+            "Conversion of %s finished with %s warnings",
             request.url,
             len(result.warnings),
         )
@@ -144,8 +144,8 @@ async def convert_novel(request: ConvertRequest) -> Response:
     )
 
 
-# Front montujemy na koncu - trasy /api/* zostaly juz zarejestrowane i wygrywaja.
+# Mount the frontend last - the /api/* routes are already registered and win.
 if WEB_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 else:  # pragma: no cover
-    log.warning("Katalog frontu nie istnieje: %s", WEB_DIR)
+    log.warning("Frontend directory does not exist: %s", WEB_DIR)

@@ -43,14 +43,14 @@ def test_removes_elements_hidden_by_stylesheet():
 
 
 def test_removes_html_comments():
-    """Komentarze sa wypisywane doslownie przez decode() - musza zniknac."""
+    """decode() writes comments out verbatim - they have to go."""
     result = sanitize_html("<div><p>tekst</p><!-- notatka redakcyjna --></div>")
     assert "notatka" not in result
     assert "<!--" not in result
 
 
 def test_removes_commented_out_ad_markup():
-    """Serwisy trzymaja w komentarzach wylaczony kod reklam."""
+    """Sites keep disabled ad code inside comments."""
     html = """
     <div>
       <p>tresc rozdzialu</p>

@@ -34,7 +34,7 @@ def test_languages_endpoint_exposes_pl_and_en(client):
 def test_language_file_has_no_missing_keys(client):
     en = client.get("/api/languages/en").json()
     pl = client.get("/api/languages/pl").json()
-    assert set(en) == set(pl), "Pliki tlumaczen rozjechaly sie kluczami"
+    assert set(en) == set(pl), "The translation files have drifted apart on keys"
 
 
 def test_unknown_language_is_404(client):
@@ -58,7 +58,7 @@ def test_preview_rejects_unsupported_site(client):
 
 
 def test_convert_returns_epub(client, monkeypatch):
-    """Pelny przebieg /api/convert z podmieniona warstwa parsera."""
+    """A full /api/convert run with the parser layer stubbed out."""
     metadata = NovelMetadata(
         title="Fejkowa Powiesc",
         author="Autor",
@@ -106,7 +106,7 @@ def test_convert_returns_epub(client, monkeypatch):
 
 
 def test_preview_response_shape():
-    """PreviewResponse musi zawierac limit - front na nim opiera domyslny wybor."""
+    """PreviewResponse must carry the cap - the frontend bases its default selection on it."""
     response = PreviewResponse(
         parser="royalroad",
         metadata=NovelMetadata(title="x", source_url="https://x.test"),

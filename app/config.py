@@ -1,4 +1,4 @@
-"""Konfiguracja aplikacji - wszystko sterowane zmiennymi srodowiskowymi WNE_*."""
+"""Application configuration - everything driven by WNE_* environment variables."""
 
 from __future__ import annotations
 
@@ -25,28 +25,30 @@ class Settings(BaseSettings):
         "webnoveltoepub/0.1 (+https://github.com/SpookyDoge/webnoveltoepub)"
     )
     request_timeout: float = 30.0
-    #: Odstep miedzy kolejnymi zapytaniami do tego samego hosta (sekundy).
-    #: Nie zmniejszaj bez potrzeby - to jedyne, co chroni serwis przed zalaniem.
+    #: Delay between consecutive requests to the same host (seconds).
+    #: Don't lower it without a good reason - it is the only thing keeping us
+    #: from flooding someone else's site.
     request_delay: float = 0.75
     max_retries: int = 3
 
-    # --- Limity konwersji ---
-    #: Twardy limit rozdzialow w jednym EPUB-ie (ochrona przed 3000-rozdzialowymi
-    #: potworami, ktore zabija timeout przegladarki).
+    # --- Conversion limits ---
+    #: Hard cap on chapters in a single EPUB (protects against 3000-chapter
+    #: monsters that a browser timeout would kill anyway).
     max_chapters: int = 300
 
-    # --- Playwright ("ciezki tryb") ---
+    # --- Playwright ("heavy mode") ---
     playwright_enabled: bool = False
     playwright_wait_until: str = "networkidle"
     playwright_timeout_ms: int = 45_000
 
-    # --- Zapis na dysk ---
-    #: Poza streamowaniem w odpowiedzi HTTP zapisz kopie EPUB-a na dysku.
-    #: Domyslnie wylaczone (aplikacja jest bezstanowa); wlaczaja to gotowce
-    #: dla paneli self-hosted, gdzie uzytkownik szuka plikow w File Managerze.
+    # --- Saving to disk ---
+    #: Besides streaming it in the HTTP response, save a copy of the EPUB
+    #: to disk. Off by default (the app is stateless); the ready-made files
+    #: for self-hosted panels turn it on, because users there look for their
+    #: files in a File Manager.
     save_to_disk: bool = False
-    #: Sciezka wzgledna rozwiazuje sie wzgledem WORKDIR, czyli /app/output
-    #: w kontenerze. Tam podpina sie bind mount.
+    #: A relative path resolves against WORKDIR, i.e. /app/output inside the
+    #: container. That is where the bind mount is attached.
     output_dir: Path = Path("output")
 
     # --- UI / i18n ---
