@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "code": "pl",
+    "name": "Polski"
+  },
+  "app.title": "webnoveltoepub",
+  "app.tagline": "Konwertuj web novele do plików EPUB. Self-hosted.",
+  "language.label": "Język",
+
+  "form.url.label": "Adres powieści",
+  "form.url.placeholder": "https://www.royalroad.com/fiction/12345/slug",
+  "form.url.hint": "Wklej link do strony głównej powieści (tej ze spisem rozdziałów).",
+  "form.preview": "Wczytaj rozdziały",
+  "form.loading": "Wczytywanie…",
+
+  "supported.title": "Obsługiwane strony",
+  "supported.heavy": "wymaga trybu ciężkiego",
+
+  "novel.author": "Autor",
+  "novel.chapters": "Rozdziały",
+  "novel.tags": "Tagi",
+  "novel.source": "Źródło",
+  "novel.cover_alt": "Okładka",
+
+  "chapters.title": "Rozdziały",
+  "chapters.found": "Znaleziono {count} rozdziałów",
+  "chapters.selected": "Zaznaczono: {count}",
+  "chapters.select_all": "Zaznacz wszystkie",
+  "chapters.select_none": "Wyczyść",
+  "chapters.range": "Zakres",
+  "chapters.range_from": "od",
+  "chapters.range_to": "do",
+  "chapters.range_apply": "Zastosuj zakres",
+  "chapters.limit_warning": "Serwer ogranicza jeden EPUB do {max} rozdziałów. Nadmiarowe zostaną pominięte.",
+
+  "options.title": "Opcje",
+  "options.include_cover": "Dołącz okładkę",
+  "options.language": "Język książki (metadane EPUB)",
+
+  "convert.button": "Generuj EPUB",
+  "convert.working": "Generuję EPUB — przy długich powieściach może to potrwać kilka minut…",
+  "convert.done": "Gotowe. Pobieranie powinno zacząć się automatycznie.",
+
+  "error.title": "Coś poszło nie tak",
+  "error.invalid_url": "To nie wygląda na poprawny adres http(s).",
+  "error.unsupported_site": "Żaden parser nie obsługuje jeszcze tej strony. W README jest instrukcja, jak dodać własny.",
+  "error.parser_error": "Parser nie poradził sobie z tą stroną. Layout serwisu mógł się zmienić.",
+  "error.fetch_error": "Nie udało się połączyć ze stroną. Może być niedostępna, limitować zapytania albo blokować boty.",
+  "error.no_selection": "Zaznacz przynajmniej jeden rozdział.",
+  "error.network": "Brak połączenia z serwerem.",
+  "error.unknown": "Nieoczekiwany błąd.",
+
+  "footer.source": "Kod źródłowy",
+  "footer.notice": "Używaj do treści, które wolno Ci pobierać, i respektuj regulaminy serwisów."
+}

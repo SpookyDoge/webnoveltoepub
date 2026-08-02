@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>webnoveltoepub</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📖</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1 data-i18n="app.title">webnoveltoepub</h1>
+      <p class="tagline" data-i18n="app.tagline"></p>
+    </div>
+    <label class="lang-switch">
+      <span data-i18n="language.label"></span>
+      <select id="language-select"></select>
+    </label>
+  </header>
+
+  <main>
+    <section class="card">
+      <form id="preview-form">
+        <label for="url-input" data-i18n="form.url.label"></label>
+        <input id="url-input" name="url" type="url" required
+               data-i18n-placeholder="form.url.placeholder" autocomplete="off">
+        <p class="hint" data-i18n="form.url.hint"></p>
+        <button type="submit" id="preview-button" data-i18n="form.preview"></button>
+      </form>
+      <details class="supported">
+        <summary data-i18n="supported.title"></summary>
+        <ul id="parser-list"></ul>
+      </details>
+    </section>
+
+    <section id="error-box" class="card error" hidden>
+      <strong data-i18n="error.title"></strong>
+      <p id="error-message"></p>
+    </section>
+
+    <section id="novel-card" class="card novel" hidden>
+      <img id="novel-cover" alt="" hidden>
+      <div class="novel-info">
+        <h2 id="novel-title"></h2>
+        <p><span class="label" data-i18n="novel.author"></span>: <span id="novel-author"></span></p>
+        <p id="novel-description" class="description"></p>
+        <p class="meta">
+          <span class="label" data-i18n="novel.source"></span>:
+          <a id="novel-source" href="#" target="_blank" rel="noopener noreferrer"></a>
+        </p>
+        <p id="novel-tags" class="tags"></p>
+      </div>
+    </section>
+
+    <section id="chapters-card" class="card" hidden>
+      <div class="chapters-header">
+        <h2 data-i18n="chapters.title"></h2>
+        <span id="chapters-count" class="badge"></span>
+      </div>
+
+      <p id="limit-warning" class="warning" hidden></p>
+
+      <div class="chapter-controls">
+        <button type="button" id="select-all" data-i18n="chapters.select_all"></button>
+        <button type="button" id="select-none" data-i18n="chapters.select_none"></button>
+        <span class="range-controls">
+          <label for="range-start" data-i18n="chapters.range_from"></label>
+          <input id="range-start" type="number" min="1" step="1" value="1">
+          <label for="range-end" data-i18n="chapters.range_to"></label>
+          <input id="range-end" type="number" min="1" step="1">
+          <button type="button" id="apply-range" data-i18n="chapters.range_apply"></button>
+        </span>
+        <span id="selected-count" class="badge subtle"></span>
+      </div>
+
+      <ol id="chapter-list" class="chapter-list"></ol>
+
+      <fieldset class="options">
+        <legend data-i18n="options.title"></legend>
+        <label class="checkbox">
+          <input type="checkbox" id="include-cover" checked>
+          <span data-i18n="options.include_cover"></span>
+        </label>
+        <label>
+          <span data-i18n="options.language"></span>
+          <input id="book-language" type="text" size="6" placeholder="en">
+        </label>
+      </fieldset>
+
+      <button type="button" id="convert-button" class="primary" data-i18n="convert.button"></button>
+      <p id="status-message" class="status" hidden></p>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/SpookyDoge/webnoveltoepub" target="_blank"
+       rel="noopener noreferrer" data-i18n="footer.source"></a>
+    <span data-i18n="footer.notice"></span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1c1f24;
+  --muted: #626b78;
+  --border: #dfe3e8;
+  --accent: #3d6fd4;
+  --accent-text: #ffffff;
+  --error-bg: #fdecec;
+  --error-border: #e5a0a0;
+  --warning-bg: #fdf5e2;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --card: #1c2027;
+    --text: #e6e9ee;
+    --muted: #99a2b0;
+    --border: #2c323b;
+    --accent: #6d9bff;
+    --accent-text: #10131a;
+    --error-bg: #3a2224;
+    --error-border: #7a3d42;
+    --warning-bg: #3a3222;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 1rem 3rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main, .topbar, footer { max-width: 900px; margin: 0 auto; }
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.5rem 0 1rem;
+}
+
+.topbar h1 { margin: 0; font-size: 1.6rem; }
+.tagline { margin: 0.25rem 0 0; color: var(--muted); }
+
+.lang-switch { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+
+input[type="url"], input[type="text"], input[type="number"], select {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+input[type="url"] { width: 100%; }
+input[type="number"] { width: 5.5rem; }
+
+.hint { margin: 0.4rem 0 0.8rem; color: var(--muted); font-size: 0.9rem; }
+
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.6; cursor: progress; }
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+.supported { margin-top: 1rem; color: var(--muted); }
+.supported ul { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+
+.error { background: var(--error-bg); border-color: var(--error-border); }
+.error p { margin: 0.4rem 0 0; }
+
+.warning {
+  background: var(--warning-bg);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 1rem;
+}
+
+.novel { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+.novel img { width: 140px; border-radius: 6px; flex-shrink: 0; }
+.novel-info { flex: 1; min-width: 260px; }
+.novel h2 { margin: 0 0 0.5rem; }
+.novel p { margin: 0.25rem 0; }
+.description { color: var(--muted); max-height: 8.5rem; overflow-y: auto; }
+.label { color: var(--muted); }
+.tags { color: var(--muted); font-size: 0.9rem; }
+
+.chapters-header { display: flex; align-items: center; gap: 0.75rem; }
+.chapters-header h2 { margin: 0 0 0.75rem; }
+
+.badge {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.7rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.badge.subtle { border-style: dashed; color: var(--muted); }
+
+.chapter-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.range-controls { display: flex; align-items: center; gap: 0.4rem; }
+.range-controls label { margin: 0; font-weight: 400; color: var(--muted); }
+
+.chapter-list {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  list-style: none;
+}
+
+.chapter-list li { padding: 0.15rem 0; }
+.chapter-list label { font-weight: 400; margin: 0; display: flex; gap: 0.5rem; }
+.chapter-list .num { color: var(--muted); min-width: 3ch; text-align: right; }
+
+.options { border: 1px solid var(--border); border-radius: 6px; margin-top: 1rem; }
+.options legend { padding: 0 0.4rem; color: var(--muted); }
+.options label { display: inline-flex; align-items: center; gap: 0.5rem; margin-right: 1.5rem; font-weight: 400; }
+.checkbox input { width: auto; }
+
+.status { margin-top: 0.75rem; color: var(--muted); }
+
+footer {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+a { color: var(--accent); }

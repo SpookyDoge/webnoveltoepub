@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "code": "en",
+    "name": "English"
+  },
+  "app.title": "webnoveltoepub",
+  "app.tagline": "Convert web novels into EPUB files. Self-hosted.",
+  "language.label": "Language",
+
+  "form.url.label": "Novel URL",
+  "form.url.placeholder": "https://www.royalroad.com/fiction/12345/slug",
+  "form.url.hint": "Paste the link to the novel's main page (the one with the chapter list).",
+  "form.preview": "Load chapters",
+  "form.loading": "Loading…",
+
+  "supported.title": "Supported sites",
+  "supported.heavy": "requires heavy mode",
+
+  "novel.author": "Author",
+  "novel.chapters": "Chapters",
+  "novel.tags": "Tags",
+  "novel.source": "Source",
+  "novel.cover_alt": "Cover",
+
+  "chapters.title": "Chapters",
+  "chapters.found": "{count} chapters found",
+  "chapters.selected": "{count} selected",
+  "chapters.select_all": "Select all",
+  "chapters.select_none": "Clear",
+  "chapters.range": "Range",
+  "chapters.range_from": "from",
+  "chapters.range_to": "to",
+  "chapters.range_apply": "Apply range",
+  "chapters.limit_warning": "The server caps a single EPUB at {max} chapters. Extra chapters will be dropped.",
+
+  "options.title": "Options",
+  "options.include_cover": "Include cover image",
+  "options.language": "Book language (EPUB metadata)",
+
+  "convert.button": "Generate EPUB",
+  "convert.working": "Generating EPUB — this can take a few minutes for long novels…",
+  "convert.done": "Done. Your download should start automatically.",
+
+  "error.title": "Something went wrong",
+  "error.invalid_url": "That does not look like a valid http(s) URL.",
+  "error.unsupported_site": "No parser supports this site yet. See the README for how to add one.",
+  "error.parser_error": "The parser could not read this page. The site layout may have changed.",
+  "error.fetch_error": "Could not reach the site. It may be down, rate-limiting, or blocking bots.",
+  "error.no_selection": "Select at least one chapter.",
+  "error.network": "Could not reach the server.",
+  "error.unknown": "Unexpected error.",
+
+  "footer.source": "Source code",
+  "footer.notice": "Use it for content you are allowed to download, and respect each site's terms of service."
+}
