@@ -105,6 +105,10 @@ class Job:
 
     id: str
     kind: str
+    #: Where the job came from: "manual" (a button) or the scheduler's reason
+    #: ("startup" / "interval"). Labels the run for the UI; changes nothing
+    #: about how it executes or is controlled.
+    trigger: str = "manual"
     created_at: float = field(default_factory=time.monotonic)
     finished_at: float | None = None
     status: str = "running"
@@ -171,6 +175,11 @@ class Job:
     def finished(self) -> bool:
         return self.status != "running"
 
+    def wait(self, timeout: float | None = None) -> bool:
+        """Blocks until the job ends. Call it off the event loop."""
+        with self._cond:
+            return self._cond.wait_for(lambda: self.status != "running", timeout)
+
 
 class JobRegistry:
     """In-memory job store.
@@ -184,9 +193,9 @@ class JobRegistry:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
-    def create(self, kind: str) -> Job:
+    def create(self, kind: str, trigger: str = "manual") -> Job:
         self._evict_expired()
-        job = Job(id=uuid.uuid4().hex, kind=kind)
+        job = Job(id=uuid.uuid4().hex, kind=kind, trigger=trigger)
         with self._lock:
             self._jobs[job.id] = job
         return job
@@ -195,9 +204,27 @@ class JobRegistry:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def run(self, kind: str, worker: Callable[[Emitter, JobControl], Any]) -> Job:
+    def active(self) -> Job | None:
+        """The job currently running, if any.
+
+        Lets a browser that did not start a job still find it - which is how
+        a scheduler-triggered update becomes visible - and lets the scheduler
+        hold off while anything else is in flight.
+        """
+        with self._lock:
+            for job in self._jobs.values():
+                if not job.finished:
+                    return job
+        return None
+
+    def run(
+        self,
+        kind: str,
+        worker: Callable[[Emitter, JobControl], Any],
+        trigger: str = "manual",
+    ) -> Job:
         """Starts `worker` on a thread with an emitter and the pause/stop switch."""
-        job = self.create(kind)
+        job = self.create(kind, trigger)
 
         def runner() -> None:
             try:

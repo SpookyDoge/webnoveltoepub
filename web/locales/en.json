@@ -108,5 +108,10 @@
   "job.stop_note_single": "Stop finishes the chapter being downloaded, then keeps everything fetched so far.",
   "job.stop_note_series": "Stop ends the whole run, not just this novel. Everything already updated stays saved.",
   "job.download_updated": "Download the updated EPUB",
-  "error.job_busy": "Something is already running. Wait for it to finish, or stop it first."
+  "error.job_busy": "Something is already running. Wait for it to finish, or stop it first.",
+  "job.kind_auto_update": "Automatic update (scheduled)",
+  "settings.run_status_ok": "finished",
+  "settings.run_status_error": "failed",
+  "settings.run_status_stopped": "stopped by you",
+  "settings.run_status_skipped": "postponed — something else was running"
 }

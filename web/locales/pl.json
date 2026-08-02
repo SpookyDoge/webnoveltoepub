@@ -108,5 +108,10 @@
   "job.stop_note_single": "Zatrzymanie domyka pobierany rozdział i zachowuje wszystko, co dotarło do tej pory.",
   "job.stop_note_series": "Zatrzymanie kończy cały przebieg, nie tylko tę powieść. Wszystko już zaktualizowane zostaje zapisane.",
   "job.download_updated": "Pobierz zaktualizowany EPUB",
-  "error.job_busy": "Coś już się wykonuje. Poczekaj na koniec albo najpierw to zatrzymaj."
+  "error.job_busy": "Coś już się wykonuje. Poczekaj na koniec albo najpierw to zatrzymaj.",
+  "job.kind_auto_update": "Aktualizacja automatyczna (harmonogram)",
+  "settings.run_status_ok": "zakończone",
+  "settings.run_status_error": "błąd",
+  "settings.run_status_stopped": "zatrzymane przez Ciebie",
+  "settings.run_status_skipped": "odłożone — coś innego było w toku"
 }

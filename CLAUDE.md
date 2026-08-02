@@ -34,6 +34,8 @@ nie o EPUB-ie. Dzięki temu dodanie serwisu nie dotyka niczego poza jednym pliki
 | `service.py` | orkiestracja URL → rozdziały → EPUB, obsługa błędów | trzyma politykę "padnięty rozdział nie kładzie książki" |
 | `library.py` | trwały rejestr powieści (JSON) | zapis/odczyt oddzielony od orkiestracji; testowalny bez sieci i HTTP |
 | `progress.py` | rejestr zadań + strumień SSE | jeden mechanizm progresu dla wszystkich długich operacji |
+| `jobs.py` | start zadań + mapowanie wyjątków na kody | wspólne dla `main.py` i `scheduler.py`; osobny moduł rozcina cykl importów (`main` → `scheduler`) |
+| `scheduler.py` | *kiedy* odpalić automatyczne sprawdzenie | wyłącznie wyzwalacz — samo wykonanie idzie przez `jobs.start_update_all` |
 | `main.py` | FastAPI, walidacja URL, mapowanie wyjątków na HTTP, statyki | cienka warstwa; logika biznesowa jest testowalna bez HTTP |
 
 Kod jest **synchroniczny**, `main.py` odpala go przez `asyncio.to_thread` — nie
@@ -265,6 +267,12 @@ zadaniem jest na zakładce, której nie widzi.
   dwa zadania to podwójny ruch do tego samego serwisu — każde buduje własny
   `Fetcher` z własnym throttlingiem — a jedna para Pause/Stop steruje tylko
   jednym `state.jobId`.
+- **Czwarty przepływ: zadanie ze schedulera**, adoptowane przez
+  `pollActiveJob()` → `adoptScheduledJob()`. Używa tych samych handlerów co
+  „Update all" (`updateAllHandlers()`), różni się wyłącznie etykietą
+  `job.kind_auto_update`. `claimJob({quiet: true})` — poller sprawdza stan
+  wcześniej, więc przegraną w wyścigu ma przemilczeć, a nie pokazywać błąd
+  komuś, kto w nic nie kliknął.
 
 Zdarzenia, na których wisi panel: `entry_started` (tytuł), `update_started`
 (`new_chapters` — rozmiar paska), `chapter_downloaded` (`index`/`total`),
@@ -286,13 +294,46 @@ do `.exe`) w zamian za jakieś dwadzieścia linijek.
   dodatkowo woła `scheduler.nudge()`, więc reakcja jest natychmiastowa.
 - Sprawdzanie przy starcie (`check_on_startup`) odpala się po
   `STARTUP_DELAY_SECONDS` (30 s), niezależnie od interwału.
-- **Reużywa `service.update_all`** — scheduler nie ma własnej kopii logiki
-  aktualizacji.
 - **Włączenie automatu nie odpala sprawdzenia od razu.** Zapisuje się wpis
   `baseline`, a pierwszy realny przebieg następuje interwał później — inaczej
   zaznaczenie checkboxa uderzałoby naraz we wszystkie serwisy z biblioteki.
 - `_run_once` **nigdy nie rzuca**: nieudane sprawdzenie ląduje w logu
   przebiegów, a pętla żyje dalej.
+
+### Scheduler jest tylko wyzwalaczem, nie drugą ścieżką
+
+Automatyczne sprawdzenie tworzy **dokładnie takie samo zadanie** co przycisk
+„Update all": ten sam rejestr, to samo `job_id`, ten sam strumień SSE i te same
+endpointy `pause`/`resume`/`stop`. Scheduler decyduje wyłącznie **kiedy**.
+
+Jednym miejscem startu jest `app/jobs.py` (`start_update_all`). Ten moduł
+istnieje z powodu importów: `main` importuje `scheduler` (dla `lifespan`), więc
+scheduler nie może zaimportować `main` z powrotem. `jobs.py` nie importuje
+żadnego z nich, dlatego mieszka tam też `error_detail` i `job_worker`.
+
+- `Job.trigger` (`manual` / `startup` / `interval`) **tylko etykietuje** —
+  nie zmienia niczego w wykonaniu ani sterowaniu. Front pokazuje na tej
+  podstawie „Automatic update (scheduled)", żeby użytkownik wiedział, czemu
+  coś się dzieje bez jego akcji.
+- **`GET /api/jobs/active`** to sposób, w jaki przeglądarka znajduje zadanie,
+  którego sama nie uruchomiła — bez tego automat leciałby niewidocznie, bo nie
+  ma żądania, do którego dałoby się podpiąć strumień. Front odpytuje ten
+  endpoint co `ACTIVE_POLL_MS` (5 s) i wchodzi w `followJob()`, wydzielony
+  z `runJob()`. Historia eventów jest append-only, więc dołączenie w połowie
+  niczego nie gubi — to samo ratuje sytuację po odświeżeniu strony.
+- **Scheduler ustępuje, gdy cokolwiek trwa** (`registry.active()`): dwa
+  przebiegi to podwójny ruch do tych samych serwisów i walka o te same pliki
+  EPUB. Przebieg nie przepada — `startup_due` zostaje ustawione, a interwał
+  nadal jest wymagalny, więc ruszy przy pierwszym wolnym ticku.
+- **Log przebiegów ma `status`** (`ok` / `error` / `stopped` / `skipped`).
+  `stopped` znaczy „użytkownik nacisnął Stop" — częściowy wynik jest wtedy
+  celowy, nie awarią.
+
+**Pułapka:** `last_run_at()` **pomija wpisy `skipped`**. Gdyby je liczył,
+odłożony przebieg zresetowałby zegar interwału i odsunął realne sprawdzenie
+o całą dobę. Z tego samego powodu `_stand_down()` zapisuje wpis **raz na
+odłożenie**, a nie co tick — inaczej długa konwersja zapchałaby całą
+20-elementową historię.
 
 **Pułapka:** `asyncio.Event` tworzy się dopiero w `start()`, nie w
 `__init__`. Obiekt schedulera powstaje przy imporcie modułu — długo przed

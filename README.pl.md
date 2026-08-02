@@ -86,6 +86,12 @@ sprawdzać bibliotekę (najczęściej co godzinę) i czy sprawdzać krótko po s
 Zakładka pokazuje ostatni i następny przebieg oraz log 20 ostatnich. Zmiany
 działają od razu, bez restartu.
 
+Automatyczne sprawdzenie nie dzieje się po cichu: pojawia się w zakładce
+**Konwersja**, w tym samym panelu postępu co przebieg ręczny, z etykietą
+„Aktualizacja automatyczna (harmonogram)", i można je wstrzymać albo zatrzymać
+dokładnie tak samo. Log odnotowuje, które przebiegi zatrzymałeś, a które
+ustąpiły, bo akurat coś konwertowałeś.
+
 > Pod Dockerem aplikacja chodzi non-stop, więc harmonogram naprawdę działa.
 > W wersji `.exe` aplikacja żyje tylko przy otwartym oknie, więc odstęp liczony
 > w godzinach rzadko zdąży zadziałać.

@@ -391,10 +391,14 @@ const jobPanel = {
  * The busy message goes to the Convert tab together with the panel showing
  * what is already running - that is the answer to "why can't I?".
  */
-function claimJob() {
+function claimJob({ quiet = false } = {}) {
   if (state.jobBusy) {
-    selectTab("convert");
-    showError("error.job_busy");
+    // The poller checks first and would only lose a race, so it stays quiet;
+    // a user who clicked deserves to be told why nothing happened.
+    if (!quiet) {
+      selectTab("convert");
+      showError("error.job_busy");
+    }
     return false;
   }
   state.jobBusy = true;
@@ -425,43 +429,54 @@ function releaseJob() {
  */
 function runJob(path, body, handlers = {}) {
   const { onStart, ...eventHandlers } = handlers;
-  return new Promise((resolve, reject) => {
-    fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body === null ? null : JSON.stringify(body),
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === null ? null : JSON.stringify(body),
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw Object.assign(new Error("start_failed"), { detail: payload.detail });
+      }
+      return response.json();
     })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw Object.assign(new Error("start_failed"), { detail: payload.detail });
-        }
-        return response.json();
-      })
-      .then(({ job_id: jobId }) => {
-        if (onStart) onStart(jobId);
-        const source = new EventSource(`/api/jobs/${jobId}/events`);
+    .then(({ job_id: jobId }) => {
+      if (onStart) onStart(jobId);
+      return followJob(jobId, eventHandlers);
+    });
+}
 
-        for (const [type, handler] of Object.entries(eventHandlers)) {
-          source.addEventListener(type, (event) => handler(JSON.parse(event.data)));
-        }
+/**
+ * Streams an already-running job.
+ *
+ * Split out of `runJob` so a job this browser did not start - a scheduled
+ * update, or any job still going after a page reload - can be picked up and
+ * shown exactly like one we launched ourselves. The event history is
+ * append-only and replayed from the start, so joining late loses nothing.
+ */
+function followJob(jobId, handlers = {}) {
+  return new Promise((resolve, reject) => {
+    const source = new EventSource(`/api/jobs/${jobId}/events`);
 
-        source.addEventListener("done", () => {
-          source.close();
-          resolve(jobId);
-        });
-        source.addEventListener("error", (event) => {
-          source.close();
-          let detail = null;
-          try {
-            detail = JSON.parse(event.data).detail;
-          } catch {
-            // A transport-level EventSource error carries no data payload.
-          }
-          reject(Object.assign(new Error("job_failed"), { detail }));
-        });
-      })
-      .catch(reject);
+    for (const [type, handler] of Object.entries(handlers)) {
+      source.addEventListener(type, (event) => handler(JSON.parse(event.data)));
+    }
+
+    source.addEventListener("done", () => {
+      source.close();
+      resolve(jobId);
+    });
+    source.addEventListener("error", (event) => {
+      source.close();
+      let detail = null;
+      try {
+        detail = JSON.parse(event.data).detail;
+      } catch {
+        // A transport-level EventSource error carries no data payload.
+      }
+      reject(Object.assign(new Error("job_failed"), { detail }));
+    });
   });
 }
 
@@ -722,6 +737,25 @@ async function updateEntry(entry, button) {
  * The panel carries two levels of context: which novel of how many is being
  * handled, and the chapter progress inside it.
  */
+/**
+ * SSE handlers for a whole-library run.
+ *
+ * Shared by the manual button and by a run the scheduler started, because the
+ * job is the same on both sides - only the label above the bar differs.
+ */
+function updateAllHandlers() {
+  return {
+    bulk_progress: ({ index, total, title }) => {
+      jobPanel.setSeries(index, total, title);
+      // Until this novel reports chapters, the bar tracks the series - a
+      // novel that turns out to be up to date reports none at all.
+      jobPanel.setProgress(index, total, "job.counter_novels");
+    },
+    update_started: ({ new_chapters }) => jobPanel.setProgress(0, new_chapters),
+    chapter_downloaded: ({ index, total }) => jobPanel.setProgress(index, total),
+  };
+}
+
 async function updateAll() {
   if (!claimJob()) return;
   clearError();
@@ -734,14 +768,7 @@ async function updateAll() {
     await runJob("/api/library/update-all", null, {
       // Stop here ends the whole series; novels already refreshed stay saved.
       onStart: (jobId) => jobPanel.attach(jobId),
-      bulk_progress: ({ index, total, title }) => {
-        jobPanel.setSeries(index, total, title);
-        // Until this novel reports chapters, the bar tracks the series - a
-        // novel that turns out to be up to date reports none at all.
-        jobPanel.setProgress(index, total, "job.counter_novels");
-      },
-      update_started: ({ new_chapters }) => jobPanel.setProgress(0, new_chapters),
-      chapter_downloaded: ({ index, total }) => jobPanel.setProgress(index, total),
+      ...updateAllHandlers(),
     });
     setStatus("library.update_all_done");
   } catch (error) {
@@ -751,6 +778,58 @@ async function updateAll() {
     el.updateAll.disabled = false;
     jobPanel.finish();
     loadLibrary();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled runs
+// ---------------------------------------------------------------------------
+
+/** How often to look for a job this browser did not start. */
+const ACTIVE_POLL_MS = 5000;
+
+/**
+ * Looks for a running job nobody in this tab launched.
+ *
+ * A scheduled update would otherwise happen invisibly: there is no request to
+ * hang a stream off, because the timer - not the browser - started it. Polling
+ * one in-memory lookup every few seconds is cheaper than a second push
+ * channel, and it doubles as recovery after a page reload.
+ */
+async function pollActiveJob() {
+  if (state.jobBusy) return;
+  try {
+    const active = await fetch("/api/jobs/active").then((r) => r.json());
+    // A manual job with nothing claimed here means another tab owns it.
+    if (!active || active.trigger === "manual") return;
+    await adoptScheduledJob(active);
+  } catch {
+    // Server asleep or offline; the next tick tries again.
+  }
+}
+
+/** Shows a scheduler-started run as if the user had clicked Update all. */
+async function adoptScheduledJob(active) {
+  if (!claimJob({ quiet: true })) return;
+  clearError();
+  selectTab("convert");
+  // The label is the only difference from a manual run: it answers "why is
+  // this happening when I did not touch anything?".
+  jobPanel.begin({ kindKey: "job.kind_auto_update", series: true });
+  jobPanel.attach(active.job_id);
+  setStatus("library.updating_all");
+
+  try {
+    await followJob(active.job_id, updateAllHandlers());
+    setStatus("library.update_all_done");
+  } catch (error) {
+    showJobError(error);
+  } finally {
+    releaseJob();
+    jobPanel.finish();
+    loadLibrary();
+    // The run log gained an entry; refresh it if Settings is on screen.
+    loadSettings();
   }
 }
 
@@ -959,7 +1038,13 @@ function renderRunLog(runs) {
 
       const summary = document.createElement("p");
       summary.className = "meta";
-      summary.textContent = t("settings.run_summary", run);
+      // A stopped or skipped pass is not a failure, and the log has to say so
+      // rather than showing counts that look like a run that went nowhere.
+      const outcome = t(`settings.run_status_${run.status || "ok"}`);
+      summary.textContent =
+        run.status === "skipped"
+          ? outcome
+          : `${outcome} · ${t("settings.run_summary", run)}`;
 
       info.append(when, summary);
       li.append(info);
@@ -1036,6 +1121,10 @@ async function init() {
   const chosen = detectLanguage(languages.map((lang) => lang.code));
   el.languageSelect.value = chosen;
   await setLanguage(chosen);
+
+  // Catches both a scheduled run starting and one still going after a reload.
+  pollActiveJob();
+  setInterval(pollActiveJob, ACTIVE_POLL_MS);
 }
 
 init().catch((error) => {

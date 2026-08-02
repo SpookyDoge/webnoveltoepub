@@ -18,9 +18,10 @@ import logging
 from datetime import datetime, timedelta
 
 from .config import Settings, get_settings
+from .jobs import start_update_all
 from .library import SettingsStore, utc_now
 from .models import AutoUpdateRun
-from .service import update_all
+from .progress import registry
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ class UpdateScheduler:
         self._wakeup: asyncio.Event | None = None
         self._task: asyncio.Task | None = None
         self._running = False
+        #: Guards against one skip entry per tick while a long job runs.
+        self._skip_recorded = False
         self.next_run_at: str | None = None
 
     # -- Lifecycle ----------------------------------------------------------
@@ -82,14 +85,23 @@ class UpdateScheduler:
                 now = asyncio.get_running_loop().time()
 
                 if startup_due is not None and now >= startup_due:
-                    startup_due = None
-                    await self._run_once("startup")
-                    continue
+                    # Stand down rather than run alongside: two passes would
+                    # double the traffic to the same sites and fight over the
+                    # same EPUB files. `startup_due` stays set, so the check
+                    # happens as soon as the slot is free.
+                    if registry.active() is not None:
+                        self._stand_down("startup")
+                    else:
+                        startup_due = None
+                        await self._run_once("startup")
+                        continue
 
                 self.next_run_at = self._compute_next_run(config)
                 if self._is_due(config):
-                    await self._run_once("interval")
-                    continue
+                    if registry.active() is None:
+                        await self._run_once("interval")
+                        continue
+                    self._stand_down("interval")
 
                 await self._sleep_tick()
             except asyncio.CancelledError:
@@ -137,25 +149,66 @@ class UpdateScheduler:
         due = _parse(last) + timedelta(hours=config.auto_update_interval_hours)
         return due.isoformat(timespec="seconds")
 
+    def _stand_down(self, trigger: str) -> None:
+        """Notes that a pass was postponed because something else was running.
+
+        Recorded once per postponement, not once per tick: a long manual
+        conversion would otherwise fill the whole 20-entry history with
+        skips. `last_run_at` ignores these, so the pass stays due and starts
+        as soon as the slot frees up.
+        """
+        log.info("Automatic check (%s) postponed - another job is running", trigger)
+        if self._skip_recorded:
+            return
+        self._skip_recorded = True
+        self.store.record_run(
+            AutoUpdateRun(
+                started_at=utc_now(),
+                finished_at=utc_now(),
+                trigger=trigger,
+                status="skipped",
+            )
+        )
+
     async def _run_once(self, trigger: str) -> None:
-        """Runs one pass. Never raises - a failed check must not kill the loop."""
+        """Runs one pass. Never raises - a failed check must not kill the loop.
+
+        The work itself goes through `start_update_all`, exactly as the manual
+        button does: same registry, same job id, same SSE stream, same
+        pause/stop endpoints. This method only decides *when*.
+        """
         self._running = True
+        self._skip_recorded = False
         started = utc_now()
+        status = "ok"
         checked = updated = failed = 0
         try:
             log.info("Automatic library check started (%s)", trigger)
-            response = await asyncio.to_thread(update_all, self.settings)
-            checked = len(response.results)
-            updated = response.updated
-            failed = response.failed
-            log.info(
-                "Automatic check done: %s checked, %s updated, %s failed",
-                checked,
-                updated,
-                failed,
-            )
+            job = start_update_all(self.settings, trigger)
+            # Blocks a worker thread, not the loop, so ticks keep happening.
+            await asyncio.to_thread(job.wait)
+
+            if job.status == "error":
+                status, failed = "error", 1
+                log.warning("Automatic check failed: %s", job.error)
+            else:
+                response = job.result
+                if response is not None:
+                    checked = len(response.results)
+                    updated = response.updated
+                    failed = response.failed
+                # The user hit Stop mid-run: partial by choice, not a failure.
+                if job.state == "stopped":
+                    status = "stopped"
+                log.info(
+                    "Automatic check %s: %s checked, %s updated, %s failed",
+                    status,
+                    checked,
+                    updated,
+                    failed,
+                )
         except Exception as exc:  # noqa: BLE001
-            failed = 1
+            status, failed = "error", 1
             log.exception("Automatic library check failed: %s", exc)
         finally:
             self._running = False
@@ -164,6 +217,7 @@ class UpdateScheduler:
                     started_at=started,
                     finished_at=utc_now(),
                     trigger=trigger,
+                    status=status,
                     checked=checked,
                     updated=updated,
                     failed=failed,

@@ -230,5 +230,11 @@ class SettingsStore:
         write_json(self.path, payload)
 
     def last_run_at(self) -> str | None:
-        history = self.runs()
+        """When the library was last actually checked.
+
+        Skipped passes are excluded on purpose: they are log entries about a
+        check that did *not* happen, and counting one would restart the
+        interval clock - postponing the real check by a whole interval.
+        """
+        history = [run for run in self.runs() if run.status != "skipped"]
         return history[-1].finished_at if history else None

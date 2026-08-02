@@ -83,6 +83,12 @@ under **Settings**, choose how often the library is checked (hourly at the
 fastest) and whether to check shortly after startup. The tab shows the last and
 next run plus a log of the last 20. Changes apply immediately, no restart.
 
+An automatic check is not a background secret: it shows up on the **Convert**
+tab in the same progress panel a manual run uses, labelled "Automatic update
+(scheduled)", and you can pause or stop it exactly the same way. The log says
+which passes you stopped, and which stood down because you were already
+converting something.
+
 > Under Docker the app keeps running, so the schedule genuinely fires. The
 > Windows `.exe` only lives while its window is open, so an interval measured in
 > hours will rarely come round.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -19,6 +19,7 @@ from . import __version__, i18n
 from .config import WEB_DIR, get_settings
 from .epub_builder import slugify
 from .fetcher import FetchError, PlaywrightUnavailableError
+from .jobs import job_worker, start_update_all
 from .library import Library, SettingsStore
 from .models import (
     AppSettings,
@@ -31,16 +32,14 @@ from .models import (
     SettingsResponse,
 )
 from .parsers import ParserError, all_parsers, discover
-from .progress import JobError, registry
+from .progress import registry
 from .scheduler import scheduler
 from .service import (
     ConversionResult,
-    StoppedBeforeStartError,
     UnsupportedSiteError,
     convert,
     import_webtoepub_library,
     preview,
-    update_all,
     update_entry,
 )
 from .webtoepub import WebToEpubImportError
@@ -74,38 +73,6 @@ app = FastAPI(
     description="Self-hosted web novel to EPUB converter",
     lifespan=lifespan,
 )
-
-
-def error_detail(exc: Exception) -> str:
-    """Turns an exception into the detail code the frontend translates.
-
-    The single source of truth for both routes: the synchronous ones raise it
-    as an HTTP detail, the job ones hand it to the client over SSE. Order
-    matters - PlaywrightUnavailableError is a FetchError.
-    """
-    if isinstance(exc, UnsupportedSiteError):
-        return "unsupported_site"
-    if isinstance(exc, StoppedBeforeStartError):
-        return "stopped_empty"
-    if isinstance(exc, ParserError):
-        return f"parser_error: {exc}"
-    if isinstance(exc, PlaywrightUnavailableError):
-        return f"playwright_unavailable: {exc}"
-    if isinstance(exc, FetchError):
-        return f"fetch_error: {exc}"
-    return f"unknown_error: {type(exc).__name__}: {exc}"
-
-
-def _job_worker(work: Callable[..., object]) -> Callable[..., object]:
-    """Wraps a job body so failures arrive as codes, not raw exception text."""
-
-    def runner(emit: object, control: object) -> object:
-        try:
-            return work(emit, control)
-        except Exception as exc:
-            raise JobError(error_detail(exc)) from exc
-
-    return runner
 
 
 def _validate_url(url: str) -> str:
@@ -231,7 +198,7 @@ def _epub_response(result: ConversionResult) -> Response:
 async def start_preview_job(request: PreviewRequest) -> dict[str, str]:
     """Same work as /api/preview, but reporting chapters as they are found."""
     url = _validate_url(request.url)
-    job = registry.run("preview", _job_worker(lambda emit, control: preview(url, settings, emit)))
+    job = registry.run("preview", job_worker(lambda emit, control: preview(url, settings, emit)))
     return {"job_id": job.id}
 
 
@@ -241,9 +208,23 @@ async def start_convert_job(request: ConvertRequest) -> dict[str, str]:
     request.url = _validate_url(request.url)
     job = registry.run(
         "convert",
-        _job_worker(lambda emit, control: convert(request, settings, emit, control)),
+        job_worker(lambda emit, control: convert(request, settings, emit, control)),
     )
     return {"job_id": job.id}
+
+
+@app.get("/api/jobs/active")
+async def active_job() -> dict | None:
+    """Whatever is running right now, or null.
+
+    Declared before /api/jobs/{job_id}/... so "active" is never read as an id.
+    This is how a browser finds a job it did not start - a scheduled update
+    would otherwise run invisibly, which is the whole point of this endpoint.
+    """
+    job = registry.active()
+    if job is None:
+        return None
+    return {"job_id": job.id, "kind": job.kind, "trigger": job.trigger, "state": job.state}
 
 
 @app.get("/api/jobs/{job_id}/events")
@@ -354,11 +335,8 @@ async def download_library_entry(entry_id: str) -> Response:
 
 @app.post("/api/library/update-all")
 async def start_update_all_job() -> dict[str, str]:
-    job = registry.run(
-        "library_update_all",
-        _job_worker(lambda emit, control: update_all(settings, emit, control)),
-    )
-    return {"job_id": job.id}
+    """The manual button. The scheduler starts the very same job."""
+    return {"job_id": start_update_all(settings).id}
 
 
 @app.post("/api/library/{entry_id}/update")
@@ -367,7 +345,7 @@ async def start_update_job(entry_id: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="unknown_entry")
     job = registry.run(
         "library_update",
-        _job_worker(lambda emit, control: update_entry(entry_id, settings, emit, control)),
+        job_worker(lambda emit, control: update_entry(entry_id, settings, emit, control)),
     )
     return {"job_id": job.id}
 

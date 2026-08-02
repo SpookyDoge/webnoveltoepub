@@ -284,7 +284,7 @@ def test_invalid_url_is_rejected_before_a_job_starts():
 
 def test_error_detail_maps_each_exception_to_a_frontend_code():
     from app.fetcher import FetchError, PlaywrightUnavailableError
-    from app.main import error_detail
+    from app.jobs import error_detail
     from app.parsers import ParserError
     from app.service import UnsupportedSiteError
 

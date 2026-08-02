@@ -174,8 +174,13 @@ class AutoUpdateRun(BaseModel):
 
     started_at: str
     finished_at: str
-    #: "startup" | "interval" | "manual"
+    #: "startup" | "interval" | "manual" | "baseline"
     trigger: str
+    #: "ok" | "error" | "stopped" | "skipped". "stopped" means the user hit
+    #: Stop on the automatic job - worth its own status, because the partial
+    #: result it leaves behind is deliberate, not a failure. "skipped" means
+    #: something else was already running and the pass stood down.
+    status: str = "ok"
     checked: int = 0
     updated: int = 0
     failed: int = 0
