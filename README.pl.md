@@ -1,4 +1,4 @@
-🇵🇱 Polski | 🇬🇧 [English](README.md)
+[English](README.md) | **Polski**
 
 # webnoveltoepub
 
@@ -14,11 +14,21 @@ cd webnoveltoepub
 docker compose up --build
 ```
 
-Wejdź na <http://localhost:8000> i wklej adres powieści. To wszystko — domyślny
-obraz waży ~200 MB i nie wymaga żadnej konfiguracji.
+Wejdź na <http://localhost:8000> i wklej adres powieści. Rozdziały pojawiają się
+na liście w miarę wykrywania, a konwersja pokazuje pasek postępu na żywo. Każda
+przekonwertowana powieść zapisuje się w zakładce **Biblioteka**, gdzie jednym
+kliknięciem dociągniesz rozdziały wydane od tamtego czasu — patrz
+[Biblioteka](#biblioteka). To wszystko: domyślny obraz waży ~200 MB i nie
+wymaga żadnej konfiguracji.
 
 Interaktywna dokumentacja API (gdybyś wolał to oskryptować) jest pod
-<http://localhost:8000/docs>.
+<http://localhost:8000/docs>. Dotychczasowe `/api/preview` i `/api/convert`
+działają bez zmian; interfejs korzysta z wariantów zadaniowych
+(`/api/jobs/*`) ze strumieniem postępu przez SSE.
+
+**Nie chcesz Dockera?** Jest jednoplikowa wersja .exe dla Windows — pobierasz,
+uruchamiasz i aplikacja otwiera się w przeglądarce. Szczegóły w sekcji
+[Windows (.exe, bez Dockera)](#windows-exe-bez-dockera).
 
 ## Wspierane serwisy
 
@@ -33,6 +43,28 @@ automatycznie.
 
 Brakuje jakiegoś serwisu? Zajrzyj do sekcji [Rozwój projektu](#rozwój-projektu)
 — jeden serwis to jeden plik.
+
+## Biblioteka
+
+Zakładka **Biblioteka** pokazuje każdą przekonwertowaną powieść: okładkę, liczbę
+rozdziałów i datę ostatniej aktualizacji.
+
+- **Aktualizuj** pobiera wyłącznie rozdziały, których zapisany EPUB jeszcze nie
+  ma, i dopisuje je do istniejącego pliku. Powieść pobrana do rozdziału 200
+  kosztuje 3 żądania, żeby dobić do 203 — nie 203.
+- **Aktualizuj wszystkie** przechodzi całą bibliotekę z przerwami między
+  powieściami i raportuje, co zaktualizowano, co było już aktualne, a co
+  padło. Jeden niedostępny serwis nie zatrzymuje reszty.
+- **Usuń** kasuje wpis i pyta, czy skasować także plik EPUB.
+
+Aktualizacja wymaga pliku na dysku, czyli `WNE_SAVE_TO_DISK=true` (domyślnie
+włączone w plikach dla CasaOS i w wersji `.exe`). Bez tego biblioteka nadal
+zapisuje, co konwertowałeś, ale takie wpisy są wyłącznie historią i wprost to
+komunikują.
+
+Zakładamy, że listy rozdziałów rosną na końcu — tak działają web novele. Jeśli
+serwis przestawi albo usunie rozdziały, aktualizacja zgłosi, że lista się
+przesunęła, zamiast po cichu dopisać nie te.
 
 ## Konfiguracja
 
@@ -83,6 +115,35 @@ pobierania ich wprost z przeglądarki).
 W odróżnieniu od `docker-compose.yml` z roota repo, pliki te nie używają
 profili ani interpolacji `${VAR:-default}` — panele zwykle uruchamiają wklejony
 plik as-is i potrafią zignorować osobny `.env`.
+
+## Windows (.exe, bez Dockera)
+
+Pobierz najnowszy `webnoveltoepub-windows-v*.exe` ze
+[strony Releases](https://github.com/SpookyDoge/webnoveltoepub/releases/latest)
+i kliknij dwukrotnie. Bez Pythona, bez Dockera, bez instalatora — otwiera się
+okno konsoli, aplikacja startuje na wolnym porcie lokalnym (domyślnie 8000)
+i przeglądarka otwiera się na tym adresie. Zamknięcie konsoli zatrzymuje
+aplikację.
+
+Wygenerowane EPUB-y trafiają do folderu `output` obok pliku `.exe`, niezależnie
+od zwykłego pobrania w przeglądarce.
+
+> **Ostrzeżenie SmartScreen przy pierwszym uruchomieniu.** Plik nie jest
+> podpisany certyfikatem code-signing — certyfikat kosztuje co roku, co trudno
+> uzasadnić przy niekomercyjnym projekcie open source. Windows pokaże więc
+> niebieski ekran „Windows protected your PC" z informacją o nieznanym wydawcy.
+> Kliknij **More info** → **Run anyway**. To normalne; jeśli wolisz tego
+> uniknąć, użyj wersji Docker albo zbuduj `.exe` samodzielnie:
+>
+> ```bash
+> pip install -r requirements-build.txt
+> pyinstaller build/pyinstaller.spec --noconfirm
+> ```
+
+**Ograniczenie:** tryb ciężki (renderowanie JavaScriptu) jest w tej wersji
+niedostępny — Chromium waży ~300 MB i dołączenie go rozdęłoby 20-megabajtowy
+plik do pobrania. Gdyby jakiś serwis go wymagał, UI to komunikuje i odsyła do
+wersji Docker. Żaden z obecnie wspieranych serwisów go nie potrzebuje.
 
 ## Rozwój projektu
 

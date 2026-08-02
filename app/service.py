@@ -7,26 +7,40 @@ so the event loop is not blocked (and so the synchronous Playwright API works).
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Settings, get_settings
-from .epub_builder import build_epub, slugify
+from .epub_builder import append_chapters, build_epub, slugify
 from .fetcher import Fetcher, FetchError
+from .library import Library, utc_now
 from .models import (
     ChapterContent,
     ChapterRef,
     ConvertRequest,
+    LibraryEntry,
+    LibraryUpdateAllResponse,
+    LibraryUpdateResult,
     NovelMetadata,
     PreviewResponse,
 )
 from .parsers import BaseParser, ParserError, get_parser_class
+from .progress import Emitter
 
 log = logging.getLogger(__name__)
 
 
 class UnsupportedSiteError(RuntimeError):
     """No parser handles this domain."""
+
+
+class LibraryEntryNotFoundError(RuntimeError):
+    """No library entry with that id."""
+
+
+def _noop(*args: object, **kwargs: object) -> None:
+    """Stand-in emitter, so service code never has to check for None."""
 
 
 @dataclass
@@ -48,13 +62,36 @@ def _make_parser(url: str, settings: Settings) -> tuple[BaseParser, Fetcher]:
     return parser_cls(fetcher), fetcher
 
 
-def preview(url: str, settings: Settings | None = None) -> PreviewResponse:
+def preview(
+    url: str,
+    settings: Settings | None = None,
+    emit: Emitter | None = None,
+) -> PreviewResponse:
     settings = settings or get_settings()
+    emit = emit or _noop
     parser, fetcher = _make_parser(url, settings)
+
+    found = 0
+
+    def on_batch(batch: list[ChapterRef]) -> None:
+        # One event per source page rather than per chapter: a page is one
+        # HTTP request, so its chapters become known all at once anyway, and
+        # 4400 individual frames would buy nothing visually.
+        nonlocal found
+        found += len(batch)
+        emit(
+            "chapters_found",
+            chapters=[chapter.model_dump() for chapter in batch],
+            total=found,
+        )
+
+    parser.on_chapters_found = on_batch
     try:
         metadata = parser.get_metadata(url)
+        emit("metadata", parser=parser.name, metadata=metadata.model_dump())
         chapters = parser.get_chapter_list(url)
     finally:
+        parser.on_chapters_found = None
         fetcher.close()
 
     return PreviewResponse(
@@ -65,8 +102,13 @@ def preview(url: str, settings: Settings | None = None) -> PreviewResponse:
     )
 
 
-def convert(request: ConvertRequest, settings: Settings | None = None) -> ConversionResult:
+def convert(
+    request: ConvertRequest,
+    settings: Settings | None = None,
+    emit: Emitter | None = None,
+) -> ConversionResult:
     settings = settings or get_settings()
+    emit = emit or _noop
     parser, fetcher = _make_parser(request.url, settings)
     warnings: list[str] = []
 
@@ -74,6 +116,7 @@ def convert(request: ConvertRequest, settings: Settings | None = None) -> Conver
         metadata = parser.get_metadata(request.url)
         if request.language:
             metadata.language = request.language
+        emit("metadata", parser=parser.name, metadata=metadata.model_dump())
 
         all_chapters = parser.get_chapter_list(request.url)
         selected = select_chapters(all_chapters, request)
@@ -87,38 +130,73 @@ def convert(request: ConvertRequest, settings: Settings | None = None) -> Conver
             )
             selected = selected[: settings.max_chapters]
 
-        contents: list[ChapterContent] = []
-        for chapter in selected:
-            try:
-                contents.append(parser.get_chapter_content(chapter))
-            except (FetchError, ParserError) as exc:
-                log.warning("Skipping chapter %s (%s): %s", chapter.index, chapter.url, exc)
-                warnings.append(f"#{chapter.index} {chapter.title}: {exc}")
-                contents.append(
-                    ChapterContent(
-                        title=chapter.title,
-                        html=(
-                            "<p><em>[webnoveltoepub] This chapter could not be "
-                            f"fetched. Source: <a href=\"{chapter.url}\">"
-                            f"{chapter.url}</a></em></p>"
-                        ),
-                    )
-                )
+        contents = _download_chapters(parser, selected, warnings, emit)
 
+        emit("stage", stage="building")
         cover = parser.get_cover_image(metadata) if request.include_cover else None
         payload = build_epub(metadata, contents, cover)
     finally:
         fetcher.close()
 
     file_name = f"{slugify(metadata.title)}.epub"
+    saved_path = save_epub_to_disk(file_name, payload, settings)
+
+    record_in_library(
+        metadata=metadata,
+        parser_name=parser.name,
+        chapters=selected,
+        file_path=saved_path,
+        settings=settings,
+    )
+
     return ConversionResult(
         file_name=file_name,
         content=payload,
         metadata=metadata,
         chapter_count=len(contents),
         warnings=warnings,
-        saved_path=save_epub_to_disk(file_name, payload, settings),
+        saved_path=saved_path,
     )
+
+
+def _download_chapters(
+    parser: BaseParser,
+    selected: list[ChapterRef],
+    warnings: list[str],
+    emit: Emitter,
+) -> list[ChapterContent]:
+    """Fetches chapter bodies, reporting progress and tolerating failures."""
+    total = len(selected)
+    contents: list[ChapterContent] = []
+
+    for position, chapter in enumerate(selected, start=1):
+        try:
+            contents.append(parser.get_chapter_content(chapter))
+            failed = False
+        except (FetchError, ParserError) as exc:
+            log.warning("Skipping chapter %s (%s): %s", chapter.index, chapter.url, exc)
+            warnings.append(f"#{chapter.index} {chapter.title}: {exc}")
+            contents.append(
+                ChapterContent(
+                    title=chapter.title,
+                    html=(
+                        "<p><em>[webnoveltoepub] This chapter could not be "
+                        f"fetched. Source: <a href=\"{chapter.url}\">"
+                        f"{chapter.url}</a></em></p>"
+                    ),
+                )
+            )
+            failed = True
+
+        emit(
+            "chapter_downloaded",
+            index=position,
+            total=total,
+            title=chapter.title,
+            failed=failed,
+        )
+
+    return contents
 
 
 def save_epub_to_disk(file_name: str, payload: bytes, settings: Settings) -> Path | None:
@@ -161,6 +239,168 @@ def _free_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
     raise OSError(f"Too many files named {path.name}")
+
+
+# --------------------------------------------------------------------------
+# Library
+# --------------------------------------------------------------------------
+
+
+def record_in_library(
+    *,
+    metadata: NovelMetadata,
+    parser_name: str,
+    chapters: list[ChapterRef],
+    file_path: Path | None,
+    settings: Settings,
+) -> LibraryEntry:
+    """Remembers the novel after a conversion.
+
+    Recorded even when nothing was written to disk: the entry is still worth
+    having as history, it just cannot be topped up later - the update endpoint
+    says so explicitly rather than silently rebuilding everything.
+    """
+    entry = Library.build_entry(
+        source_url=metadata.source_url,
+        parser_name=parser_name,
+        title=metadata.title,
+        author=metadata.author,
+        language=metadata.language,
+        cover_url=metadata.cover_url,
+        file_path=file_path,
+        chapter_count=len(chapters),
+        last_chapter_url=chapters[-1].url if chapters else None,
+    )
+    return Library(settings).upsert(entry)
+
+
+def update_entry(
+    entry_key: str,
+    settings: Settings | None = None,
+    emit: Emitter | None = None,
+) -> LibraryUpdateResult:
+    """Fetches only the chapters the stored EPUB does not have yet."""
+    settings = settings or get_settings()
+    emit = emit or _noop
+    library = Library(settings)
+
+    entry = library.get(entry_key)
+    if entry is None:
+        raise LibraryEntryNotFoundError(entry_key)
+
+    emit("entry_started", id=entry.id, title=entry.title)
+
+    if not entry.file_path or not Path(entry.file_path).is_file():
+        # Nothing to append to. Rebuilding would mean re-downloading the whole
+        # novel behind the user's back, so say what is wrong instead.
+        result = LibraryUpdateResult(
+            id=entry.id,
+            title=entry.title,
+            status="no_file",
+            chapter_count=entry.chapter_count,
+            detail="no_epub_on_disk",
+        )
+        emit("entry_finished", **result.model_dump())
+        return result
+
+    parser, fetcher = _make_parser(entry.source_url, settings)
+    warnings: list[str] = []
+    try:
+        all_chapters = parser.get_chapter_list(entry.source_url)
+        new_chapters = all_chapters[entry.chapter_count :]
+
+        if entry.last_chapter_url and len(all_chapters) >= entry.chapter_count > 0:
+            stored_last = all_chapters[entry.chapter_count - 1].url
+            if stored_last != entry.last_chapter_url:
+                # The source list was reordered or had entries removed, so
+                # "everything past our count" is no longer the right slice.
+                warnings.append("chapter_list_shifted")
+                log.warning(
+                    "Chapter list for %s no longer matches the stored one "
+                    "(expected %s at position %s, found %s)",
+                    entry.source_url,
+                    entry.last_chapter_url,
+                    entry.chapter_count,
+                    stored_last,
+                )
+
+        if not new_chapters:
+            result = LibraryUpdateResult(
+                id=entry.id,
+                title=entry.title,
+                status="up_to_date",
+                chapter_count=entry.chapter_count,
+            )
+            emit("entry_finished", **result.model_dump())
+            return result
+
+        emit("update_started", id=entry.id, title=entry.title, new_chapters=len(new_chapters))
+        contents = _download_chapters(parser, new_chapters, warnings, emit)
+        payload = append_chapters(Path(entry.file_path), contents)
+    finally:
+        fetcher.close()
+
+    Path(entry.file_path).write_bytes(payload)
+
+    updated = entry.model_copy(
+        update={
+            "chapter_count": entry.chapter_count + len(new_chapters),
+            "last_chapter_url": new_chapters[-1].url,
+            "updated_at": utc_now(),
+        }
+    )
+    library.upsert(updated)
+
+    result = LibraryUpdateResult(
+        id=entry.id,
+        title=entry.title,
+        status="updated",
+        added_chapters=len(new_chapters),
+        chapter_count=updated.chapter_count,
+        detail="; ".join(warnings) or None,
+    )
+    emit("entry_finished", **result.model_dump())
+    return result
+
+
+def update_all(
+    settings: Settings | None = None,
+    emit: Emitter | None = None,
+) -> LibraryUpdateAllResponse:
+    """Walks the whole library, pausing between novels."""
+    settings = settings or get_settings()
+    emit = emit or _noop
+    entries = Library(settings).load()
+
+    emit("bulk_started", total=len(entries))
+    results: list[LibraryUpdateResult] = []
+
+    for position, entry in enumerate(entries, start=1):
+        if position > 1 and settings.library_update_delay > 0:
+            # Each novel gets a fresh Fetcher, so its per-host throttle starts
+            # from zero - without this the library would burst on every site.
+            time.sleep(settings.library_update_delay)
+
+        emit("bulk_progress", index=position, total=len(entries), title=entry.title)
+        try:
+            results.append(update_entry(entry.id, settings, emit))
+        except Exception as exc:  # noqa: BLE001 - one novel must not stop the rest
+            log.warning("Updating %s failed: %s", entry.source_url, exc)
+            results.append(
+                LibraryUpdateResult(
+                    id=entry.id,
+                    title=entry.title,
+                    status="error",
+                    chapter_count=entry.chapter_count,
+                    detail=str(exc),
+                )
+            )
+
+    return LibraryUpdateAllResponse(
+        results=results,
+        updated=sum(1 for r in results if r.status == "updated"),
+        failed=sum(1 for r in results if r.status == "error"),
+    )
 
 
 def select_chapters(chapters: list[ChapterRef], request: ConvertRequest) -> list[ChapterRef]:

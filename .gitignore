@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# The PyInstaller spec for the Windows .exe lives in build/, which the
+# standard Python rules above exclude wholesale. A directory exclusion cannot
+# be undone for a single file, so the rule is narrowed to the directory's
+# contents and the spec is re-included explicitly.
+!build/
+build/*
+!build/pyinstaller.spec

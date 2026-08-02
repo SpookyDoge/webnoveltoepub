@@ -92,6 +92,91 @@ def build_epub(
         return out_path.read_bytes()
 
 
+def append_chapters(epub_path: Path, chapters: list[ChapterContent]) -> bytes:
+    """Adds chapters to an EPUB that already exists, returning the new bytes.
+
+    The point is that the chapters already in the file are never re-downloaded:
+    they are read back from disk, and only the new ones come off the network.
+    """
+    if not chapters:
+        raise ValueError("No chapters to append")
+
+    book = epub.read_epub(str(epub_path))
+
+    # read_epub hands back the table of contents as Link objects whose uid is
+    # None, and the NCX writer puts that straight into an XML attribute - which
+    # throws. So the contents list is rebuilt from the actual documents, with
+    # the titles recovered from those Links.
+    titles_by_href = {
+        getattr(link, "href", None): getattr(link, "title", None) for link in book.toc
+    }
+    documents = _documents_in_spine_order(book)
+    for item in documents:
+        if not item.title:
+            item.title = titles_by_href.get(item.file_name) or item.file_name
+
+    # File names carry the ordering, so continue from the highest one rather
+    # than from the item count - a gap would otherwise cause a collision.
+    existing = [item for item in documents if _CHAPTER_FILE_RE.match(item.file_name or "")]
+    next_position = 1 + max(
+        (int(_CHAPTER_FILE_RE.match(item.file_name).group(1)) for item in existing),
+        default=0,
+    )
+
+    language = book.get_metadata("DC", "language")
+    lang = language[0][0] if language else "en"
+
+    style = next(
+        (item for item in book.get_items() if item.file_name.endswith("main.css")), None
+    )
+
+    added: list[epub.EpubHtml] = []
+    for offset, chapter in enumerate(chapters):
+        position = next_position + offset
+        item = epub.EpubHtml(
+            # The uid must be set explicitly: on a book that came from
+            # read_epub, ebooklib does not hand out ids, and a None id reaches
+            # the NCX writer as an attribute value and blows up there.
+            uid=f"chapter_{position:04d}",
+            title=chapter.title,
+            file_name=f"text/chapter_{position:04d}.xhtml",
+            lang=lang,
+        )
+        item.content = (
+            f"<h2 class=\"chapter-title\">{_escape(chapter.title)}</h2>\n{chapter.html}"
+        )
+        if style is not None:
+            item.add_item(style)
+        book.add_item(item)
+        added.append(item)
+
+    # read_epub gives spine entries as (idref, linear) tuples; the writer also
+    # accepts item objects, so appending them directly is safe.
+    book.spine = list(book.spine) + added
+    book.toc = tuple(documents + added)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_path = Path(tmpdir) / "book.epub"
+        epub.write_epub(str(out_path), book)
+        return out_path.read_bytes()
+
+
+#: Chapter file names produced by build_epub - also how append_chapters finds
+#: where the existing numbering ends.
+_CHAPTER_FILE_RE = re.compile(r"(?:.*/)?chapter_(\d+)\.xhtml$")
+
+
+def _documents_in_spine_order(book: epub.EpubBook) -> list[epub.EpubHtml]:
+    """Readable documents in reading order, skipping the generated navigation."""
+    documents: list[epub.EpubHtml] = []
+    for entry in book.spine:
+        item_id = entry[0] if isinstance(entry, (tuple, list)) else entry
+        item = book.get_item_with_id(item_id) if isinstance(item_id, str) else item_id
+        if isinstance(item, epub.EpubHtml) and not isinstance(item, epub.EpubNav):
+            documents.append(item)
+    return documents
+
+
 #: Characters with no NFKD decomposition (they are not "letter + diacritic"),
 #: so without a manual map they would evaporate on the way to ASCII.
 _TRANSLITERATION = str.maketrans(

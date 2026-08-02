@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+
+def _base_dir() -> Path:
+    """Root that `web/` sits under.
+
+    In a PyInstaller build the bundled data lives in the temporary unpack
+    directory (`sys._MEIPASS`), not next to the .exe, so relying on
+    `__file__` alone would look for the frontend in the wrong place.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = _base_dir()
 WEB_DIR = BASE_DIR / "web"
 LOCALES_DIR = WEB_DIR / "locales"
 
@@ -51,10 +65,23 @@ class Settings(BaseSettings):
     #: container. That is where the bind mount is attached.
     output_dir: Path = Path("output")
 
+    # --- Library ---
+    #: Where the library registry lives. Unset means <output_dir>/library.json,
+    #: which keeps it on the same volume as the EPUBs - on CasaOS that is the
+    #: bind mount, so the library survives recreating the container.
+    library_path: Path | None = None
+    #: Pause between novels in a bulk update. Each novel gets a fresh Fetcher
+    #: (so its own throttle starts from zero) and this keeps the burst polite.
+    library_update_delay: float = 2.0
+
     # --- UI / i18n ---
     default_language: str = "en"
 
     log_level: str = "INFO"
+
+    def resolved_library_path(self) -> Path:
+        """Library file location, following `output_dir` unless overridden."""
+        return self.library_path or (self.output_dir / "library.json")
 
 
 @lru_cache

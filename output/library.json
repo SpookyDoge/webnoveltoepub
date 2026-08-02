@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "0f1f2af1-77df-5bb6-a9e6-af24db5995b5",
+      "source_url": "https://www.royalroad.com/fiction/1/fejk",
+      "parser": "royalroad",
+      "title": "Fejkowa Powiesc",
+      "author": "Autor",
+      "language": "pl",
+      "cover_url": null,
+      "file_path": null,
+      "chapter_count": 2,
+      "last_chapter_url": "https://www.royalroad.com/c/2",
+      "created_at": "2026-08-02T11:41:44+00:00",
+      "updated_at": "2026-08-02T11:55:21+00:00"
+    }
+  ]
+}

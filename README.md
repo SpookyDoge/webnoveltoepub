@@ -1,4 +1,4 @@
-🇬🇧 English | 🇵🇱 [Polski](README.pl.md)
+**English** | [Polski](README.pl.md)
 
 # webnoveltoepub
 
@@ -14,11 +14,20 @@ cd webnoveltoepub
 docker compose up --build
 ```
 
-Open <http://localhost:8000> and paste a novel URL. That's it — the default
-image is ~200 MB and needs no configuration.
+Open <http://localhost:8000> and paste a novel URL. Chapters appear in the list
+as they are discovered, and the conversion shows a live progress bar. Every
+novel you convert is remembered in the **Library** tab, where a single click
+pulls in whatever chapters have been published since — see
+[Library](#library). That's it: the default image is ~200 MB and needs no
+configuration.
 
 Interactive API docs (if you'd rather script it) live at
-<http://localhost:8000/docs>.
+<http://localhost:8000/docs>. The existing `/api/preview` and `/api/convert`
+routes are unchanged; the UI uses their job-based variants (`/api/jobs/*`),
+which stream progress over Server-Sent Events.
+
+**No Docker?** There is a single-file Windows executable — download it, run it,
+and the app opens in your browser. See [Windows (.exe, no Docker)](#windows-exe-no-docker).
 
 ## Supported sites
 
@@ -32,6 +41,28 @@ not to a single chapter — though chapter URLs are normalised automatically.
 
 Want another site? See [Contributing](#contributing--development) — one site is
 one file.
+
+## Library
+
+The **Library** tab lists every novel you have converted: cover, chapter count
+and when it was last refreshed.
+
+- **Update** fetches only the chapters the stored EPUB does not have yet and
+  appends them to the existing file. A novel you first grabbed at chapter 200
+  costs 3 requests to bring up to 203, not 203.
+- **Update all** walks the whole library, pausing between novels, and reports
+  what was updated, what was already current and what failed. One unreachable
+  site does not stop the rest.
+- **Remove** drops the entry and asks whether the EPUB file should go too.
+
+Updating needs the EPUB on disk, so it requires `WNE_SAVE_TO_DISK=true` (already
+the default in the CasaOS files and in the Windows `.exe`). Without it the
+library still records what you converted, but those entries are history only and
+say so.
+
+Chapter lists are assumed to grow at the end, which is how web novels work. If a
+site reorders or removes chapters, the update says the list shifted rather than
+quietly appending the wrong ones.
 
 ## Configuration
 
@@ -81,6 +112,34 @@ host, so you can pick them up in the CasaOS **File Manager** at that path
 Unlike the repo's `docker-compose.yml`, these files use no compose profiles and
 no `${VAR:-default}` interpolation — panels tend to run a pasted file as-is and
 may ignore a separate `.env`.
+
+## Windows (.exe, no Docker)
+
+Grab the latest `webnoveltoepub-windows-v*.exe` from the
+[Releases page](https://github.com/SpookyDoge/webnoveltoepub/releases/latest)
+and double-click it. No Python, no Docker, no installer — a console window
+opens, the app starts on a free local port (8000 by default) and your browser
+opens at it. Closing the console window stops the app.
+
+Generated EPUB files land in an `output` folder next to the `.exe`, on top of
+the usual browser download.
+
+> **SmartScreen warning on first run.** The executable is not code-signed — a
+> certificate costs money every year, which is hard to justify for a
+> non-commercial open source project. So Windows shows a blue "Windows
+> protected your PC" screen about an unknown publisher. Click **More info** →
+> **Run anyway**. This is expected; if you'd rather not, use the Docker version
+> or build the `.exe` yourself:
+>
+> ```bash
+> pip install -r requirements-build.txt
+> pyinstaller build/pyinstaller.spec --noconfirm
+> ```
+
+**Limitation:** heavy mode (JavaScript rendering) is not available in this
+build — Chromium weighs ~300 MB and bundling it would balloon a 20 MB download.
+If a site ever needs it, the UI says so and points you at the Docker version.
+None of the currently supported sites need it.
 
 ## Contributing / Development
 

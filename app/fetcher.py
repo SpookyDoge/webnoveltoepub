@@ -8,6 +8,7 @@ imported lazily - the lightweight Docker image does not ship it.
 from __future__ import annotations
 
 import logging
+import sys
 import time
 
 import requests
@@ -30,8 +31,37 @@ class FetchError(RuntimeError):
     """Fetching a resource failed after every attempt."""
 
 
+class PlaywrightUnavailableError(FetchError):
+    """Heavy mode was requested, but there is no usable Chromium.
+
+    Its own type so the API can turn it into a distinct, translated hint
+    instead of a generic network error - this is a setup problem the user
+    can act on, not a transient failure worth retrying.
+    """
+
+
 def make_soup(html: str) -> BeautifulSoup:
     return BeautifulSoup(html, _BS_PARSER)
+
+
+def _playwright_missing_hint() -> str:
+    """Advice that fits how the app was started.
+
+    The standalone .exe deliberately ships without Chromium (~300 MB), so
+    there telling someone to run `docker compose` is the only honest answer.
+    """
+    if getattr(sys, "frozen", False):
+        return (
+            "Heavy mode (Playwright) is not available in the .exe build - "
+            "Chromium is not bundled. Use the Docker version for sites that "
+            "need JavaScript rendering."
+        )
+    return (
+        "Playwright is not installed. Run an image built from the "
+        "`playwright` target (docker compose --profile playwright up) "
+        "or install requirements-playwright.txt and run "
+        "`playwright install chromium`."
+    )
 
 
 class Fetcher:
@@ -146,15 +176,18 @@ class Fetcher:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
-            raise FetchError(
-                "Playwright is not installed. Run an image built from the "
-                "`playwright` target (docker compose --profile playwright up) "
-                "or install requirements-playwright.txt."
-            ) from exc
+            raise PlaywrightUnavailableError(_playwright_missing_hint()) from exc
 
         if self._browser is None:
-            self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch(headless=True)
+            try:
+                self._playwright = sync_playwright().start()
+                self._browser = self._playwright.chromium.launch(headless=True)
+            except Exception as exc:  # noqa: BLE001
+                # Playwright is importable, but the browser binary is absent
+                # (a common state: `pip install playwright` without
+                # `playwright install chromium`).
+                self._playwright = None
+                raise PlaywrightUnavailableError(_playwright_missing_hint()) from exc
 
         self._throttle()
         page = self._browser.new_page(user_agent=self.settings.user_agent)

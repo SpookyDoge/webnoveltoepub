@@ -98,6 +98,12 @@ class FreeWebNovelParser(BaseParser):
         total_pages = min(self._count_pages(soup), MAX_LIST_PAGES)
         seen = {entry[1] for entry in entries}
 
+        # Numbered as we go, so each page can be reported the moment it lands -
+        # a 4400-chapter novel is 111 requests, and the UI should not stare at
+        # an empty list for the whole minute and a half that takes.
+        chapters = self._numbered(entries, start=1)
+        self.report_chapters(chapters)
+
         for page in range(2, total_pages + 1):
             page_soup = self.fetcher.get_soup(f"{url}?page={page}")
             fresh = [e for e in self._chapter_entries(page_soup, url) if e[1] not in seen]
@@ -107,11 +113,17 @@ class FreeWebNovelParser(BaseParser):
                 log.debug("Pagination for %s stopped at page %s", url, page)
                 break
             seen.update(entry[1] for entry in fresh)
-            entries.extend(fresh)
+            batch = self._numbered(fresh, start=len(chapters) + 1)
+            chapters.extend(batch)
+            self.report_chapters(batch)
 
+        return chapters
+
+    @staticmethod
+    def _numbered(entries: list[tuple[str, str]], *, start: int) -> list[ChapterRef]:
         return [
-            ChapterRef(index=i, title=title, url=chapter_url)
-            for i, (title, chapter_url) in enumerate(entries, start=1)
+            ChapterRef(index=index, title=title, url=url)
+            for index, (title, url) in enumerate(entries, start=start)
         ]
 
     def _chapter_entries(self, soup: BeautifulSoup, base: str) -> list[tuple[str, str]]:

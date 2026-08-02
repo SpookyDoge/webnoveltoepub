@@ -89,6 +89,9 @@ class RoyalRoadParser(BaseParser):
                 "Could not find the chapter list. Check that the URL points at the "
                 "novel's main page (e.g. https://www.royalroad.com/fiction/12345/slug)."
             )
+        # The whole list arrives in one response here, so there is exactly one
+        # batch to report - unlike sites that paginate their table of contents.
+        self.report_chapters(chapters)
         return chapters
 
     def _chapters_from_json(self, html: str) -> list[ChapterRef]:

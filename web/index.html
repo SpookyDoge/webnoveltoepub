@@ -19,7 +19,15 @@
     </label>
   </header>
 
+  <nav class="tabs" role="tablist">
+    <button type="button" id="tab-convert" class="tab active" role="tab"
+            aria-selected="true" data-i18n="tabs.convert"></button>
+    <button type="button" id="tab-library" class="tab" role="tab"
+            aria-selected="false" data-i18n="tabs.library"></button>
+  </nav>
+
   <main>
+    <section id="panel-convert">
     <section class="card">
       <form id="preview-form">
         <label for="url-input" data-i18n="form.url.label"></label>
@@ -89,7 +97,34 @@
       </fieldset>
 
       <button type="button" id="convert-button" class="primary" data-i18n="convert.button"></button>
+
+      <div id="convert-progress" class="progress" hidden>
+        <progress id="convert-bar" value="0" max="100"></progress>
+        <span id="convert-counter" class="badge subtle"></span>
+      </div>
       <p id="status-message" class="status" hidden></p>
+    </section>
+    </section>
+
+    <section id="panel-library" hidden>
+      <section class="card">
+        <div class="chapters-header">
+          <h2 data-i18n="library.title"></h2>
+          <span id="library-count" class="badge"></span>
+        </div>
+        <p class="hint" data-i18n="library.hint"></p>
+        <div class="chapter-controls">
+          <button type="button" id="update-all" class="primary" data-i18n="library.update_all"></button>
+          <button type="button" id="library-refresh" data-i18n="library.refresh"></button>
+        </div>
+        <div id="library-progress" class="progress" hidden>
+          <progress id="library-bar" value="0" max="100"></progress>
+          <span id="library-counter" class="badge subtle"></span>
+        </div>
+        <p id="library-status" class="status" hidden></p>
+        <p id="library-empty" class="hint" data-i18n="library.empty" hidden></p>
+        <ul id="library-list" class="library-list"></ul>
+      </section>
     </section>
   </main>
 

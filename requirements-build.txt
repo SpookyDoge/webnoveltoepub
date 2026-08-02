@@ -1,0 +1,3 @@
+-r requirements.txt
+# Standalone Windows .exe build - see build/pyinstaller.spec
+pyinstaller>=6.6

@@ -32,6 +32,8 @@ nie o EPUB-ie. Dzięki temu dodanie serwisu nie dotyka niczego poza jednym pliki
 | `parsers/` | wiedza o konkretnym serwisie | jedyna warstwa, która się psuje przy zmianie layoutu |
 | `epub_builder.py` | składanie EPUB-a, nazwy plików | parsery nie znają ebooklib |
 | `service.py` | orkiestracja URL → rozdziały → EPUB, obsługa błędów | trzyma politykę "padnięty rozdział nie kładzie książki" |
+| `library.py` | trwały rejestr powieści (JSON) | zapis/odczyt oddzielony od orkiestracji; testowalny bez sieci i HTTP |
+| `progress.py` | rejestr zadań + strumień SSE | jeden mechanizm progresu dla wszystkich długich operacji |
 | `main.py` | FastAPI, walidacja URL, mapowanie wyjątków na HTTP, statyki | cienka warstwa; logika biznesowa jest testowalna bez HTTP |
 
 Kod jest **synchroniczny**, `main.py` odpala go przez `asyncio.to_thread` — nie
@@ -140,6 +142,122 @@ zapis istnieje po to, żeby użytkownik panelu znalazł pliki w File Managerze.
 Kopia nigdy nie nadpisuje istniejącego pliku (sufiks `-2`, `-3`), a błąd dysku
 jest tylko logowany: konwersja ma się udać nawet gdy bind mount jest read-only.
 
+## Biblioteka
+
+`app/library.py` — trwały rejestr przekonwertowanych powieści, żeby dało się
+dociągnąć nowe rozdziały bez pobierania całości od nowa.
+
+**Format: jeden plik JSON, nie SQLite.** Danych jest tyle co nic (rekord na
+powieść), zapis następuje raz na konwersję, a self-hoster może otworzyć plik
+i poprawić ścieżkę edytorem tekstu. SQLite dałby współbieżność, której nie
+potrzebujemy, kosztem czytelności. Zapis jest atomowy (`mkstemp` + `os.replace`
+w tym samym katalogu) i serializowany blokadą — konwersje chodzą w wątkach
+i dwie mogą skończyć naraz.
+
+Domyślna lokalizacja to `<WNE_OUTPUT_DIR>/library.json`, celowo na tym samym
+wolumenie co EPUB-y: na CasaOS to bind mount, więc biblioteka przeżywa
+odtworzenie kontenera.
+
+- `id` wpisu = `uuid5(source_url)`, ta sama pochodna co `dc:identifier`
+  w EPUB-ie — plik i wpis zawsze da się skojarzyć.
+- **Konwersja bez `WNE_SAVE_TO_DISK` też tworzy wpis**, ale bez pliku.
+  Aktualizacja takiego wpisu zwraca status `no_file` i mówi o tym w UI,
+  zamiast po cichu pobierać całą powieść od zera.
+- Delta liczona jest jako `chapter_list[chapter_count:]`, czyli zakłada, że
+  serwisy **dopisują** rozdziały na koniec. `last_chapter_url` służy za
+  kontrolę: jeśli zapisany rozdział nie stoi już na swojej pozycji, wynik
+  dostaje ostrzeżenie `chapter_list_shifted`.
+- Dopisywanie do EPUB-a: `epub_builder.append_chapters()` czyta plik i dokłada
+  rozdziały, więc **stare rozdziały nie są pobierane ponownie**.
+
+**Pułapka ebooklib przy round-tripie** — dwie rzeczy, które się wywalają:
+`read_epub()` zwraca spis treści jako obiekty `Link` z `uid=None`, co writer
+NCX wstawia wprost do atrybutu XML (`TypeError: Argument must be bytes or
+unicode, got 'NoneType'`), a nowym elementom nie nadaje `id`. Dlatego
+`append_chapters` odbudowuje TOC z faktycznych dokumentów (odzyskując tytuły
+z `Link`ów) i jawnie ustawia `uid` nowych rozdziałów. Nie upraszczać.
+
+## Progres na żywo (SSE)
+
+`app/progress.py` — **jeden** mechanizm dla wszystkich długich operacji:
+skanowania listy, konwersji i aktualizacji biblioteki.
+
+Dlaczego zadania + SSE, a nie strumieniowanie samej pracy: warstwa serwisowa
+jest synchroniczna i chodzi w wątku roboczym, więc nie może `yield`ować do
+odpowiedzi HTTP. Rejestr zadań rozdziela te dwa światy. SSE zamiast pollingu,
+bo po stronie przeglądarki to trzy linijki `EventSource`, ruch i tak jest
+jednokierunkowy, i nie ma interwału, którym trzeba by żonglować między
+opóźnieniem a obciążeniem.
+
+Eventy siedzą w **liście append-only** z `Condition`, nie w kolejce: klient,
+który podłączy się z opóźnieniem, odtwarza historię od zera i płynnie
+przechodzi w tryb na żywo, a ten sam event nie może dojść dwa razy.
+
+### Jak dodać progres do nowej operacji
+
+1. Przyjmij `emit: Emitter | None = None` w funkcji serwisowej i wołaj
+   `emit("cos_sie_stalo", ...)` w ciekawych miejscach.
+2. W trasie odpal `registry.run("nazwa", lambda emit: twoja_funkcja(..., emit))`
+   i zwróć `{"job_id": job.id}`.
+3. Front: `runJob(path, body, {typ_eventu: handler})` w `web/app.js`.
+
+Kolejkowanie, strumień SSE, odtwarzanie historii i sprzątanie są już zrobione.
+
+Uwagi:
+- Nagłówek `X-Accel-Buffering: no` jest **konieczny** — nginx domyślnie buforuje
+  odpowiedź i wstrzymałby wszystkie eventy do końca zadania, czyli dokładnie to,
+  czemu ten mechanizm ma zapobiegać.
+- Lista rozdziałów raportowana jest **partiami** (`chapters_found`), jedna na
+  stronę źródła. Strona to jedno żądanie HTTP, więc jej rozdziały i tak stają
+  się znane naraz; 4400 osobnych ramek nic by nie dało wizualnie.
+- Parsery zgłaszają partie przez opcjonalny hook `on_chapters_found` +
+  `report_chapters()`. Kontrakt parsera to nadal te same trzy metody, a parser,
+  który nigdy nie zawoła `report_chapters`, działa bez zmian.
+- Zadania żyją w pamięci (`JOB_TTL_SECONDS`), bo trzymają gotowy EPUB, który ma
+  sens tylko dla przeglądarki, która o niego poprosiła.
+
+## Packaging `.exe` (Windows)
+
+`build/pyinstaller.spec` pakuje `app/` + `web/` w jeden plik (~21 MB).
+Punktem wejścia jest [app/desktop.py](app/desktop.py): szuka wolnego portu od
+8000 w górę, startuje uvicorna na `127.0.0.1` i otwiera przeglądarkę.
+Release buduje `.github/workflows/release-windows.yml` na `windows-latest`
+i wiesza asset `webnoveltoepub-windows-v<wersja>.exe` przy releasie.
+
+Zweryfikowane lokalnie na zbudowanym `.exe`: oba parsery wykryte, lokalizacje
+i statyki serwowane z bundla, konwersja RoyalRoad → EPUB w folderze `output`
+obok pliku, druga instancja przeskakuje na kolejny port.
+
+Rzeczy, które trzeba pamiętać przy zmianach:
+- **Parsery są importowane dynamicznie**, więc analiza statyczna PyInstallera
+  ich nie widzi. `hiddenimports` w specu **globuje** `app/parsers/*.py`, więc
+  nowy parser nie wymaga zmian w specu — ale nie wolno tego globa usunąć,
+  bo `.exe` wstanie z zerem obsługiwanych serwisów.
+- **Import w `desktop.py` musi być bezwzględny** (`from app.main import app`).
+  PyInstaller uruchamia skrypt wejściowy jako `__main__`, więc import względny
+  wywala się na `attempted relative import with no known parent package`.
+- **`config.BASE_DIR` rozpoznaje `sys.frozen`** i wskazuje na `sys._MEIPASS`
+  (tam ląduje `web/`), natomiast `desktop.bundle_dir()` celowo wskazuje obok
+  `.exe` — `_MEIPASS` jest kasowany przy wyjściu i zabrałby EPUB-y użytkownika.
+- **`.gitignore` ignoruje `build/`.** Reguła jest zawężona do `build/*` plus
+  jawne `!build/pyinstaller.spec`, bo gita nie da się przekonać do odwrócenia
+  wykluczenia katalogu dla pojedynczego pliku.
+- `.exe` nie jest podpisany — SmartScreen ostrzega o nieznanym wydawcy.
+  Certyfikat kosztuje rocznie; README opisuje obejście („More info" → „Run
+  anyway").
+
+**Playwright w `.exe`: świadomie nieobsługiwany.** Chromium (~300 MB) nie jest
+pakowany. `PlaywrightUnavailableError` (podklasa `FetchError`) mapuje się na
+422 z kodem `playwright_unavailable`, a front pokazuje przetłumaczoną
+podpowiedź odsyłającą do wersji Docker. **TODO:** docelowo pobieranie Chromium
+na żądanie z pytaniem w UI („~300 MB, jednorazowo — kontynuować?"). Dziś to
+martwy kod, bo żaden parser nie ma `requires_playwright = True`.
+
+**TODO — brak ikony.** W repo nie ma żadnej grafiki, więc `.exe` ma domyślną
+ikonę PyInstallera. Spec podnosi `build/icon.ico`, jeśli plik się pojawi.
+Ta sama luka dotyczy `deploy/*.yml`, które wskazują na nieistniejący
+`web/icon.png`.
+
 ## Wspierane serwisy
 
 | Serwis | Parser | Źródło listy rozdziałów | Playwright |
@@ -154,9 +272,8 @@ jest tylko logowany: konwersja ma się udać nawet gdy bind mount jest read-only
    minut). To realny timeout na reverse proxy. Dotyczy też `/api/preview` przy
    powieściach z dużą liczbą stron listy (4400 rozdziałów = 111 żądań).
 2. Obrazki wewnątrz rozdziałów są **wycinane** (okładki działają).
-3. `.exe` na Windows przez PyInstaller.
-4. Cache rozdziałów między uruchomieniami.
-5. Tłumaczenie treści rozdziałów — osobna, późniejsza faza.
+3. Cache rozdziałów między uruchomieniami.
+4. Tłumaczenie treści rozdziałów — osobna, późniejsza faza.
 
 ## Fixed gotchas
 

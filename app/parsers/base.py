@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
@@ -44,8 +45,20 @@ class BaseParser(ABC):
         super().__init_subclass__(**kwargs)
         _REGISTRY.append(cls)
 
+    #: Optional hook, set by the service layer: called with each batch of
+    #: chapters as it is discovered, so the UI can fill its list while a
+    #: paginated table of contents is still being walked. Left as a plain
+    #: attribute on purpose - the parser contract stays three methods, and a
+    #: parser that never calls `report_chapters` keeps working unchanged.
+    on_chapters_found: Callable[[list[ChapterRef]], None] | None = None
+
     def __init__(self, fetcher: Fetcher) -> None:
         self.fetcher = fetcher
+
+    def report_chapters(self, chapters: list[ChapterRef]) -> None:
+        """Announces newly discovered chapters. Safe to call when nobody listens."""
+        if self.on_chapters_found is not None and chapters:
+            self.on_chapters_found(list(chapters))
 
     # -- URL matching -------------------------------------------------------
 

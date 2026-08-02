@@ -83,3 +83,50 @@ class ConvertRequest(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+# --------------------------------------------------------------------------
+# Library
+# --------------------------------------------------------------------------
+
+
+class LibraryEntry(BaseModel):
+    """One novel remembered by the app, so it can be topped up later."""
+
+    #: Derived from source_url (uuid5), so the same novel always lands on the
+    #: same entry no matter how many times it is converted.
+    id: str
+    source_url: str
+    parser: str
+    title: str
+    author: str = "Unknown"
+    language: str = "en"
+    cover_url: str | None = None
+    #: Absolute path of the EPUB on disk. None when WNE_SAVE_TO_DISK was off -
+    #: the entry still exists, but there is nothing to append new chapters to.
+    file_path: str | None = None
+    #: How many chapters the stored EPUB holds.
+    chapter_count: int = 0
+    #: URL of the last stored chapter. Lets an update notice that the source
+    #: list was reordered rather than merely extended.
+    last_chapter_url: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class LibraryUpdateResult(BaseModel):
+    """Outcome of updating a single library entry."""
+
+    id: str
+    title: str
+    #: "updated" | "up_to_date" | "no_file" | "error"
+    status: str
+    added_chapters: int = 0
+    chapter_count: int = 0
+    detail: str | None = None
+
+
+class LibraryUpdateAllResponse(BaseModel):
+    results: list[LibraryUpdateResult]
+    updated: int
+    failed: int
