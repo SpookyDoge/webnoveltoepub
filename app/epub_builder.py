@@ -19,7 +19,7 @@ p { margin: 0 0 0.75em 0; text-indent: 0; }
 hr { border: 0; border-top: 1px solid currentColor; margin: 1.5em 20%; }
 blockquote { margin: 1em 2em; font-style: italic; }
 img { max-width: 100%; height: auto; }
-.chapter-title { margin-bottom: 1.5em; }
+.chapter-title { margin-bottom: 1.5em; text-align: center; }
 .source-note { font-size: 0.8em; opacity: 0.7; }
 """
 
