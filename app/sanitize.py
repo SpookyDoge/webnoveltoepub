@@ -82,6 +82,56 @@ def strip_css_hidden(soup: BeautifulSoup | Tag) -> None:
             continue
 
 
+def _promote_br_breaks_to_paragraphs(soup: BeautifulSoup | Tag) -> None:
+    """Turns "text<br><br>text" into "<p>text</p><p>text</p>".
+
+    Some sites separate paragraphs with a pair of <br> instead of wrapping
+    each one in <p> - readable in a browser, but with no paragraph margin
+    to apply in an EPUB. This finds runs of 2+ consecutive <br> inside a
+    container and splits the container's children into separate <p> tags
+    at those points.
+    """
+    for container in soup.find_all(["div", "body", "[document]"]):
+        children = list(container.children)
+        has_double_break = False
+        run = 0
+        for child in children:
+            if isinstance(child, Tag) and child.name == "br":
+                run += 1
+                if run >= 2:
+                    has_double_break = True
+                    break
+            elif isinstance(child, NavigableString) and not child.strip():
+                continue  # whitespace between <br> tags doesn't break the run
+            else:
+                run = 0
+        if not has_double_break:
+            continue
+
+        new_children: list[list] = [[]]
+        run = 0
+        for child in children:
+            if isinstance(child, Tag) and child.name == "br":
+                run += 1
+                if run >= 2:
+                    new_children.append([])
+                    run = 0
+                    continue
+            elif not (isinstance(child, NavigableString) and not child.strip()):
+                run = 0
+            new_children[-1].append(child)
+
+        container.clear()
+        for group in new_children:
+            if not any(
+                (isinstance(c, Tag)) or (isinstance(c, NavigableString) and c.strip())
+                for c in group
+            ):
+                continue
+            p = soup.new_tag("p")
+            for c in group:
+                p.append(c)
+            container.append(p)
 def sanitize_html(
     html: str | Tag,
     *,
@@ -96,6 +146,7 @@ def sanitize_html(
         fragment = BeautifulSoup(html, "html.parser")
 
     strip_css_hidden(fragment)
+    _promote_br_breaks_to_paragraphs(fragment)
 
     for node in fragment.find_all(string=lambda s: isinstance(s, NON_CONTENT_NODES)):
         node.extract()
